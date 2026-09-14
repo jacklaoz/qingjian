@@ -11,10 +11,11 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 BIN_NAME=qingjian-linux
+SETTINGS_BIN=qingjian-settings
 OUT=target/deb
 ARCH="$(dpkg --print-architecture)"
 # 版本号写在 apps/linux/Cargo.toml 里（apps/* 各壳独立发布，见 docs/contributing.md）
-VERSION="$(grep -m1 '^version = ' apps/linux/Cargo.toml | cut -d'"' -f2)"
+VERSION="$(grep -m1 '^version = ' apps/linux/ime/Cargo.toml | cut -d'"' -f2)"
 # Debian 的版本号不收 `-`：开发版 0.1.0-dev 落成 0.1.0~dev
 DEB_VERSION="${VERSION//-/\~}"
 MAINTAINER="Qingjian <https://qingjian.app>"
@@ -59,12 +60,27 @@ build() {
 }
 
 echo "==> 编译 release"
-cargo build --release -p qingjian-linux
+cargo build --release -p qingjian-linux -p qingjian-linux-settings
 
 echo "==> qingjian（程序）"
 ROOT="$OUT/qingjian"
 mkdir -p "$ROOT/DEBIAN" "$ROOT/usr/bin" "$ROOT/usr/share/ibus/component" "$ROOT/usr/share/doc/qingjian"
 install -m 755 "target/release/$BIN_NAME" "$ROOT/usr/bin/$BIN_NAME"
+install -m 755 "target/release/$SETTINGS_BIN" "$ROOT/usr/bin/$SETTINGS_BIN"
+# 设置界面进应用菜单
+mkdir -p "$ROOT/usr/share/applications"
+cat > "$ROOT/usr/share/applications/app.qingjian.Settings.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=青简设置
+Name[en]=Qingjian Settings
+Comment=设置青简输入法
+Exec=/usr/bin/qingjian-settings
+Icon=input-keyboard
+Terminal=false
+Categories=Settings;
+Keywords=qingjian;input method;输入法;青简;
+DESKTOP
 # 组件 XML 里的 exec 要写装好之后的绝对路径，不是构建机上的
 "target/release/$BIN_NAME" --ibus-xml /usr/bin/$BIN_NAME > "$ROOT/usr/share/ibus/component/qingjian.xml"
 install -m 644 LICENSE "$ROOT/usr/share/doc/qingjian/copyright"
@@ -84,7 +100,7 @@ if command -v ibus >/dev/null 2>&1; then
 fi
 HOOK
 chmod 755 "$ROOT/DEBIAN/postinst" "$ROOT/DEBIAN/postrm"
-write_control qingjian "ibus (>= 1.5)" "青简输入法（Wayland）" \
+write_control qingjian "ibus (>= 1.5), libgtk-4-1" "青简输入法" \
     "输入的不只是文字：候选旁附一条目标语言译词。词库与语言模型在 qingjian-data，本地整句模型在 qingjian-model，两者都可不装。" \
     "$ROOT"
 build qingjian "$ROOT"

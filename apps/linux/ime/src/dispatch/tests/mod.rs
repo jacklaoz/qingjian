@@ -32,7 +32,7 @@ const KEYCODE_1: u32 = 10;
 /// 仓库根：测试的工作目录是 crate 目录，样例数据在仓库根下。
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .canonicalize()
         .expect("仓库根")
 }

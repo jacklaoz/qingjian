@@ -10,7 +10,7 @@ members = [
     "crates/qingjian-lm",
     "crates/qingjian-format",
     "crates/qingjian-neural",
-    "apps/cli", "apps/linux", "apps/macos", "apps/windows/server", "apps/windows/tsf", "apps/windows/settings", "tools/dict-convert", "tools/gloss-gen",
+    "apps/cli", "apps/linux/ime", "apps/linux/settings", "apps/macos", "apps/windows/server", "apps/windows/tsf", "apps/windows/settings", "tools/dict-convert", "tools/gloss-gen",
 ]
 
 [workspace.package]
@@ -65,6 +65,8 @@ tokio = { version = "1.53.1", features = ["rt", "time"] }
 
 # Linux 平台层：IBus 走 D-Bus，纯 Rust
 zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }
+# Linux 设置界面：GNOME 上的原生控件（「显示面自绘、控件面原生」）
+gtk = { version = "0.11.4", package = "gtk4" }
 
 # macOS 平台层
 objc2 = "0.6.4"

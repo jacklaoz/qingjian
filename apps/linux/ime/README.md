@@ -16,8 +16,11 @@ cargo run -p qingjian-linux -- --ibus            # 作为 IBus 引擎跑（通�
 
 ## 怎么在本机验
 
-`apps/linux/tests/ibus_engine.rs` 是对着**真的 ibus-daemon** 跑的端到端测试：建输入上下文、切成青简、
-敲 `nihao`、断言候选表里有「你好」、空格上屏。本机没有 ibus 时它直接跳过（CI 就是这种情况）。
+`tests/ibus_engine.rs` 是对着**真的 ibus-daemon** 跑的端到端测试：建输入上下文、切成青简、
+敲 `nihao`、断言候选表里有「你好」、空格上屏。
+
+**缺省不跑**，要 `QINGJIAN_IBUS_TEST=1` 才开：它会把全局引擎切成青简并真的发按键上屏，
+青简装成会话输入法之后那些按键会落进你真实的学习数据里。CI 的 Linux runner 上也没有 ibus。
 
 起一个不碰当前会话的私有 daemon 来跑它：
 
@@ -26,7 +29,7 @@ cargo build -p qingjian-linux
 mkdir -p /tmp/qj/component
 cargo run -q -p qingjian-linux -- --ibus-xml "$PWD/target/debug/qingjian-linux" > /tmp/qj/component/qingjian.xml
 env IBUS_COMPONENT_PATH=/tmp/qj/component ibus-daemon -r -d -s --panel disable --config disable -t refresh
-cargo test -p qingjian-linux --test ibus_engine -- --nocapture
+QINGJIAN_IBUS_TEST=1 cargo test -p qingjian-linux --test ibus_engine -- --nocapture
 ```
 
 这个测试只断言到「引擎走了非空 preedit 那条分支」：带内容的 `UpdatePreeditText` 不会转发到合成客户端上

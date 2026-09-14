@@ -62,7 +62,7 @@ mod tests {
     fn shared() -> Shared {
         let dict = Dictionary::from_path(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../assets/sample/dict.tsv")
+                .join("../../../assets/sample/dict.tsv")
                 .as_path(),
         )
         .expect("样例词库");

@@ -135,6 +135,19 @@ wlroots 的原生 `input-method-v2` 自绘（L4）与打包（L2）还没做。�
 - `[apps]` 按应用配置在 Linux 上**永远不命中**：Wayland 拿不到前台应用标识，缺省名单
   （`DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX`）是空的，配置模板里写明了原因。
 
+## apps/linux/settings
+
+GTK4 设置界面，与输入法是**两个可执行文件**（`qingjian-settings`）：输入法进程不该扛一整套 GUI 依赖，
+所以 `apps/linux` 拆成 `ime/` 与 `settings/` 两个 package，形状同 Windows 的 `server` / `settings`。
+两边只通过 `~/.config/qingjian/config.toml` 对话——设置界面写，输入法每秒看 mtime 热加载，不用 IPC。
+
+- 写回走 `Config::set_value`（toml_edit 原地改键），**不整份序列化**：模板里每项都有注释，整写会冲掉。
+- `form/`：`Row`（这一行绑哪个分节 / 键）+ 六种控件（开关 / 下拉 / 数字 / 文本 / 勾选 / 按钮）。
+  文本框**失焦或回车才写**——每敲一个字母写一次盘的话，输入法那边会被半截的值反复热加载。
+- `pages/`：一页一个文件，页的划分与 macOS 偏好设置、Windows 设置对齐，方便三端对照着改。
+  现有 通用 / 候选窗口 / 快捷键 / 模糊音 / 云服务 / 高级 / 关于 七页；词库与统计两页还没做。
+- 「候选窗口」页只说明不摆控件：外观与排布现在由 IBus 面板决定，摆一个改了没反应的开关比不摆更糟。
+
 ## apps/macos
 
 IMK 输入法，源码按 `app / host / imk / candidates / menubar / preferences` 分目录。

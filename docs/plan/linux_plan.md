@@ -113,7 +113,7 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
 | ↑ **到这里可发 Linux alpha** | | **≈ 2 周** |
 | **L3 合入渲染层** | `renderer-spike` 合进 main（连同 `docs/design/rendering.md`）；按键分流抽成共用 crate 供三端复用 | 见分支现状 |
 | **L4 方案 A 自绘（仅 wlroots）** | `wayland-client` 绑 `zwp_input_method_manager_v2` + `keyboard_grab`；`zwp_input_popup_surface_v2` 贴 `qingjian-render` 的位图到 `wl_shm`；启动时探测合成器有没有 `input-method-v2`，没有就落回 C 的 IBus 路径 | 5–8 天 |
-| **L5 收尾** | 状态条；GTK4 设置程序（L1–L4 期间只给注释详尽的 `config.toml` 模板，它本来就热加载） | 按需 |
+| **L5 收尾**（2026-09-14 做了设置程序） | GTK4 设置界面已做（七页，`apps/linux/settings`）；状态条与「词库 / 统计」两页还没做 | 剩按需 |
 
 ## 五、已知风险与未决问题
 
@@ -147,6 +147,16 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
 而这台机器根目录下有个 `/data`，于是 `/` 被当成随包根，回落到几十条的样例词库——
 症状是「装好了、能启动、就是一个词都打不出」。改成先确认 exe 真在 `target/{debug,release}/` 里才认开发布局，
 补了三条测试钉住。这条 macOS 走自己的 `paths.rs` 不受影响，**Windows 与 Linux 共用这个函数**。
+
+#### 设置界面（2026-09-14）
+
+GTK4，七页，`apps/linux/settings` 独立 package。`apps/linux` 因此拆成 `ime/` + `settings/`，
+形状同 Windows 的 `server` / `settings`——输入法进程不该扛 GTK 的依赖树。
+XDG 路径逻辑提到了 `qingjian_platform::xdg`，两个可执行文件共用，不抄两份。
+
+顺带修掉一个**会写脏用户数据**的问题：`tests/ibus_engine.rs` 会连上当前能找到的 ibus、把全局引擎切成青简、
+真的发按键上屏。青简装成会话输入法之后，`cargo test` 就等于往用户真实的学习数据与输入日志里灌测试数据
+（真发生过）。现在缺省跳过，要 `QINGJIAN_IBUS_TEST=1` 才跑。
 
 #### X11 上也能用（2026-09-14 验过）
 

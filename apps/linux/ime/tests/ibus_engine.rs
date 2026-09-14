@@ -66,6 +66,10 @@ const KEY_SPACE: u32 = 65;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn typing_pinyin_reaches_the_panel_and_commits() {
+    if std::env::var_os("QINGJIAN_IBUS_TEST").is_none() {
+        eprintln!("跳过：没设 QINGJIAN_IBUS_TEST=1（它会动当前会话的输入法并写进真实学习数据）");
+        return;
+    }
     let Some(address) = bus_address() else {
         eprintln!("跳过：本机没有跑 ibus-daemon");
         return;

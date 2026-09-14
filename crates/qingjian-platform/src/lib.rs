@@ -9,6 +9,10 @@ pub mod extra_dictionaries;
 pub mod protocol;
 pub mod resources;
 
+/// XDG 基础目录，输入法进程与设置界面共用。
+#[cfg(target_os = "linux")]
+pub mod xdg;
+
 pub use config::{
     AppsConfig, Config, DEFAULT_DOMAINS, DEFAULT_ENGLISH_CANDIDATES_OFF,
     DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX, DEFAULT_ENGLISH_CANDIDATES_OFF_MACOS,
