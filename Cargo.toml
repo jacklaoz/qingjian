@@ -63,6 +63,9 @@ reqwest = { version = "0.13", default-features = false }
 uuid = { version = "1.26", features = ["v4"] }
 tokio = { version = "1.53.1", features = ["rt", "time"] }
 
+# Linux 平台层：IBus 走 D-Bus，纯 Rust
+zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }
+
 # macOS 平台层
 objc2 = "0.6.4"
 objc2-foundation = { version = "0.3.2", features = ["NSArray", "NSAttributedString", "NSBundle", "NSDictionary", "NSGeometry", "NSObject", "NSProcessInfo", "NSRange", "NSString", "NSTimer", "NSURL"] }

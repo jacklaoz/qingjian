@@ -12,10 +12,20 @@ name = "qingjian-linux"
 path = "src/main.rs"
 
 [dependencies]
+qingjian-core.workspace = true
+qingjian-dictionary.workspace = true
+qingjian-learning.workspace = true
+qingjian-lm.workspace = true
 qingjian-platform.workspace = true
+qingjian-translate.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+zbus.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+futures-util = { version = "0.3.34", default-features = false }

@@ -101,8 +101,9 @@ Engine 侧在 `engine/rescoring/`：接了打分器就取 Viterbi 前 `RESCORE_P
 
 ## apps/linux
 
-Linux 壳，**只做 Wayland**（方案与分期见 `docs/plan/linux_plan.md`）。现在是 L0 骨架：还没接输入法框架，装上不能打字。
-拆成 lib + bin（与 Windows Server 同形状）：模块在 `lib.rs`，`main.rs` 只解析参数与启动。
+Linux 壳，**只做 Wayland**（方案与分期见 `docs/plan/linux_plan.md`）。现在到 L1：走 IBus 接上了，敲拼音出候选、选词上屏、热加载都通；
+wlroots 的原生 `input-method-v2` 自绘（L4）与打包（L2）还没做。拆成 lib + bin（与 Windows Server 同形状）：模块在 `lib.rs`，`main.rs` 只解析参数与启动。
+`--check` 自检 / `--ibus` 跑引擎 / `--ibus-xml` 打印组件 XML 三个入口。
 
 - `paths.rs`：只读随包数据走 `qingjian_platform::resources`（新增 Linux 的系统布局 `/usr/local/share/qingjian` → `/usr/share/qingjian`，
   因为发行版包把数据装在那里而可执行文件在 `/usr/bin`，两者不同级）；用户数据按 XDG 分三处：配置 `$XDG_CONFIG_HOME/qingjian`、
@@ -116,6 +117,19 @@ Linux 壳，**只做 Wayland**（方案与分期见 `docs/plan/linux_plan.md`）
   但按键本身不复用协议的 `KeyEvent`（那个的 `virtual_key` 是 Windows VK 码，与 keysym 取值空间不同）。
 - `check.rs`：`--check` 自检，装机后第一件事跑它。只定位与读配置、不装配 Engine，所以数据没就位时也能跑完并说清楚缺什么；
   缺主词库或建不出用户目录时退出码 1。
+- `assembly/`：装 Engine。**是第三份**（macOS `host/init.rs`、Windows `assembly/` 是它的孪生），本身平台无关，
+  但不能提到 `qingjian-platform` 共用——TSF DLL 依赖那个 crate，架构约束定死「DLL 不能带 Engine 的依赖树」。收口等 L3 的新 crate。
+- `dispatch/`：按键 → 帧，**不认 IBus 也不认 Wayland**，所以能脱离输入法框架整段测（`dispatch/tests/` 按主题分文件）。
+  分流规则与 macOS `handle_text` / `handle_command`、Windows `apply_key` 手工对齐。比 Windows 少了会话分派：
+  IBus 一个引擎实例服务当前焦点，没有「一个 Server 服务多个应用进程」那回事。
+  `Router` 是 `Send`（`Engine` 只是因为几个 `RefCell` 缓存不 `Sync`），所以 D-Bus 那层套 `Arc<Mutex<Router>>` 就够，不必另开工人线程。
+- `ibus/`：`variant.rs` 是 IBus 那套 GVariant 对象（`IBusText` / `IBusAttrList` / `IBusLookupTable`）的序列化，
+  签名错一位不报错只静默不显示，所以由单测钉死；嵌套字段要**包成变体**，直接塞结构体会内联。
+  `view.rs` 把帧折成面板认的三样（preedit / 候选表 / 辅助行）——译词只能跟在候选后面同字号，页码与删候选提示挤进辅助行，
+  换成 L4 自绘时整个文件作废。`service.rs` 找总线地址：ibus-daemon **不设** `IBUS_ADDRESS`，要按 ibus 自己的规矩
+  算地址文件名（`<机器 id>-<主机>-<显示标识>`），扫目录会挑中别的输入法留下的陈旧文件。
+- `tests/ibus_engine.rs`：对着真 ibus-daemon 跑的端到端测试，没有 ibus 就跳过（CI 上就是）。怎么起私有 daemon 见 `apps/linux/README.md`。
+- 按键：Shift + 数字在 X11 上 keysym 是 `!` 不是 `1`，而缺省删候选键就是它，所以数字要同时按**键位**（硬件键码）认。
 - `[apps]` 按应用配置在 Linux 上**永远不命中**：Wayland 拿不到前台应用标识，缺省名单
   （`DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX`）是空的，配置模板里写明了原因。
 

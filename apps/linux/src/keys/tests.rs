@@ -72,7 +72,7 @@ fn function_keys_have_no_character() {
 fn keypad_digits_read_as_digits() {
     assert_eq!(keysym::to_char(keysym::KP_0), Some('0'));
     assert_eq!(keysym::to_char(keysym::KP_9), Some('9'));
-    assert_eq!(KeyInput::new(keysym::KP_0 + 3, 0).digit(), Some(3));
+    assert_eq!(KeyInput::from_keysym(keysym::KP_0 + 3, 0).digit(), Some(3));
 }
 
 /// Shift + Tab 在 X11 是另一个 keysym，仍要认成 Tab，由修饰键区分方向。
@@ -82,7 +82,7 @@ fn iso_left_tab_is_still_tab() {
         FunctionKey::from_keysym(keysym::ISO_LEFT_TAB),
         Some(FunctionKey::Tab)
     );
-    let key = KeyInput::new(keysym::ISO_LEFT_TAB, SHIFT);
+    let key = KeyInput::from_keysym(keysym::ISO_LEFT_TAB, SHIFT);
     assert_eq!(key.function(), Some(FunctionKey::Tab));
     assert!(key.modifiers.shift);
 }
@@ -112,7 +112,7 @@ fn letters_are_not_function_keys() {
 
 #[test]
 fn modifier_mask_maps_to_the_shared_struct() {
-    let key = KeyInput::new(0x61, CONTROL | SHIFT | MOD1 | LOCK);
+    let key = KeyInput::from_keysym(0x61, CONTROL | SHIFT | MOD1 | LOCK);
     assert!(key.modifiers.ctrl);
     assert!(key.modifiers.shift);
     assert!(key.modifiers.alt, "Mod1 是 Alt");
@@ -126,7 +126,7 @@ fn modifier_mask_maps_to_the_shared_struct() {
 
 #[test]
 fn english_mode_is_added_on_top() {
-    let key = KeyInput::new(0x61, 0).with_english_mode(true);
+    let key = KeyInput::from_keysym(0x61, 0).with_english_mode(true);
     assert!(key.modifiers.english_mode);
     assert!(!key.modifiers.caps, "两者是两个位，别混");
 }
@@ -141,7 +141,34 @@ fn release_events_are_told_apart() {
 /// Shift 出来的是符号不是数字，不能当选候选的数字键。
 #[test]
 fn shifted_digits_are_not_candidate_keys() {
-    assert_eq!(KeyInput::new('1' as u32, 0).digit(), Some(1));
-    assert_eq!(KeyInput::new('!' as u32, SHIFT).digit(), None);
-    assert_eq!(KeyInput::new('0' as u32, 0).digit(), None, "0 不选候选");
+    assert_eq!(KeyInput::from_keysym('1' as u32, 0).digit(), Some(1));
+    assert_eq!(KeyInput::from_keysym('!' as u32, SHIFT).digit(), None);
+    assert_eq!(
+        KeyInput::from_keysym('0' as u32, 0).digit(),
+        None,
+        "0 不选候选"
+    );
+}
+
+/// 缺省的删候选快捷键是 Shift + 数字，而 Shift + 1 的 keysym 是 `!`：
+/// 只看字符这条路整个失效，必须退回键位。
+#[test]
+fn shifted_digits_are_still_found_by_position() {
+    // keycode 10 是主键盘区的 `1` 键（evdev KEY_1 = 2，X11 偏移 8）
+    let key = KeyInput::new('!' as u32, 10, SHIFT);
+    assert_eq!(key.digit(), None, "字符是叹号");
+    assert_eq!(key.digit_key(), Some(1), "键位仍是 1");
+    let nine = KeyInput::new('(' as u32, 18, SHIFT);
+    assert_eq!(nine.digit_key(), Some(9));
+}
+
+/// 键位不在数字行、字符也不是数字，就不是数字键。
+#[test]
+fn non_digit_keys_have_no_digit_position() {
+    assert_eq!(KeyInput::new('a' as u32, 38, 0).digit_key(), None);
+    assert_eq!(
+        KeyInput::new('0' as u32, 19, 0).digit_key(),
+        None,
+        "0 键不选候选"
+    );
 }

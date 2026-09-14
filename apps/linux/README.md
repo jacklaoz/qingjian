@@ -3,11 +3,34 @@
 青简的 Linux 输入法壳。**只做 Wayland，不做 X11**——方案取舍、分期与验收在
 [docs/plan/linux_plan.md](../../docs/plan/linux_plan.md)。
 
-现在是 **L0 骨架**：路径定位、按键翻译、自检就位，还没接输入法框架，所以装上也还不能打字。
+现在到 **L1**：走 IBus 接上了（方案 C），敲拼音出候选、选词上屏、配置热加载都通了。
+还没做 wlroots 系的原生 `input-method-v2` 自绘（L4），也还没打包（L2）。
 
 ```bash
-cargo run -p qingjian-linux -- --check     # 找一遍用户目录、随包数据与配置，打印缺什么
+cargo run -p qingjian-linux -- --check           # 找一遍用户目录、随包数据与配置，打印缺什么
+cargo run -p qingjian-linux -- --ibus-xml        # 打印 IBus 组件 XML
+cargo run -p qingjian-linux -- --ibus            # 作为 IBus 引擎跑（通常由 ibus-daemon 拉起）
 ```
+
+## 怎么在本机验
+
+`apps/linux/tests/ibus_engine.rs` 是对着**真的 ibus-daemon** 跑的端到端测试：建输入上下文、切成青简、
+敲 `nihao`、断言候选表里有「你好」、空格上屏。本机没有 ibus 时它直接跳过（CI 就是这种情况）。
+
+起一个不碰当前会话的私有 daemon 来跑它：
+
+```bash
+cargo build -p qingjian-linux
+mkdir -p /tmp/qj/component
+cargo run -q -p qingjian-linux -- --ibus-xml "$PWD/target/debug/qingjian-linux" > /tmp/qj/component/qingjian.xml
+env IBUS_COMPONENT_PATH=/tmp/qj/component ibus-daemon -r -d -s --panel disable --config disable -t refresh
+cargo test -p qingjian-linux --test ibus_engine -- --nocapture
+```
+
+**待真机验**：带内容的 `UpdatePreeditText` 在上面这个**无面板**环境里不转发给客户端
+（`--panel disable` 的 daemon 没有面板，IBus 的 preedit 路由与面板有关；同一个 `IBusText`
+在候选表与上屏两条路上都正常，所以不是序列化的问题）。组句拼音在应用里到底怎么显示，
+要在真实桌面会话里装上再看。
 
 ## 目录怎么分
 

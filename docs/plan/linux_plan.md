@@ -16,10 +16,11 @@ Core 已经是平台无关的，Linux 要做的全部是壳：把系统输入事
 `qingjian-platform::protocol` 那套 `ClientMessage` / `ServerMessage` 在 Linux 上用不着；
 值得照搬的只有 `Frame` 这个**数据模型**（preedit 分段 + 候选页 + 高亮 + 页码 + 整句补全 + 提示）。
 
-**② Engine 是线程亲和的。** `Engine` 有 5 个 `RefCell` / `Cell` 缓存（`span_cache`、`last_query`、
-`correction_cache`、`neural_cache`、`last_rescored`），不是 `Send`；而注入的 trait（`Translator` / `Learner` /
-`Predictor` / `SentenceScorer`）都要求 `Send`。zbus 是 async 的，所以 Linux 壳必须把 Engine 钉在一条专用线程上，
-D-Bus 侧只投递消息（或者干脆用 zbus 的阻塞 API 跑在那条线程里）。这和 Windows Server 的工人线程是同一个形状。
+**② Engine 要串行访问。** `Engine` 有 5 个 `RefCell` / `Cell` 缓存（`span_cache`、`last_query`、
+`correction_cache`、`neural_cache`、`last_rescored`），所以不是 `Sync`；注入的 trait（`Translator` / `Learner` /
+`Predictor` / `SentenceScorer`）都要求 `Send`。**它是 `Send` 的**（2026-09-14 实测，`dispatch::tests` 里有一条
+编译期断言钉着），所以套一层 `Mutex` 就满足 zbus 对接口对象 `Send + Sync` 的要求，不必像原先设想的那样
+另开一条工人线程来持有它。`Router` 因此可以直接 `Arc<Mutex<Router>>` 交给 D-Bus 那层。
 
 **③ 只做 Wayland，不做 X11**（2026-09-14 定）。这把最大的约束推到了台前：**Wayland 客户端不能给自己的窗口绝对定位**，
 所以候选窗摆不到光标处这件事没有 X11 那种 override-redirect 的绕法。输入法 popup 在 Wayland 上唯一的正路是
@@ -122,6 +123,26 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
   做不到的话 L1 的译文只能进 aux text，产品形态要重新看。这是 L1 第一天就该验的事。
 
 ## 六、实施记录
+
+### L1（2026-09-14，做完）
+
+IBus 接上了：敲拼音出候选、数字 / 空格选词上屏、翻页、退格、Esc、中英模式、`config.toml` 热加载都通。
+`apps/linux` 现在是 `assembly`（装 Engine）+ `dispatch`（按键 → 帧，不认 IBus）+ `ibus`（D-Bus 那层）三段。
+80 个单元测试 + 1 个对着真 ibus-daemon 跑的端到端测试（没有 ibus 就跳过，所以 CI 上不会红）。
+
+真机跑出来才看清的四件事：
+
+- **ibus-daemon 不给引擎进程设 `IBUS_ADDRESS`**，得自己读地址文件。而且**不能扫目录随便挑**：
+  `~/.config/ibus/bus/` 里常年躺着别的输入法或上次会话留下的陈旧文件（这台机器上就有 fcitx 留的
+  `-unix-0`，按字典序还排在当前会话的 `-unix-wayland-0` 前面），挑中死的那个连上去一个信号都收不到。
+  改成按 ibus 自己的规矩算文件名（`<机器 id>-<主机>-<显示标识>`），算不出来才退回扫目录且只认 PID 还活着的。
+- **Shift + 数字在 X11 上 keysym 是 `!` 不是 `1`**，而缺省的删候选快捷键正是 Shift + 数字。
+  只看字符这条快捷键在 Linux 上会整个失效，必须同时用硬件键码按**键位**认数字（Windows 用虚拟键码干同一件事）。
+- **IBus 的 GVariant 对象嵌套要包变体**：`IBusText` 的第四项签名是 `v`，直接塞结构体会内联成
+  `(sa{sv}av)`，签名错了不报错、只是静默不显示。签名现在由单元测试钉死。
+- **preedit 在无面板环境里不转发给客户端**（`--panel disable` 起的 daemon）。同一个 `IBusText`
+  在候选表与上屏两条路上都正常，所以不是我们拼错了；组句拼音的实际显示要在真实桌面会话里验，
+  记在 `apps/linux/README.md` 的「待真机验」。
 
 ### L0（2026-09-14，做完）
 

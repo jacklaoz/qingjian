@@ -22,4 +22,20 @@ pub enum ShellError {
     /// 配置文件读不了或解析不了。
     #[error(transparent)]
     Config(#[from] qingjian_platform::ConfigError),
+
+    /// 词库装不起来：这是唯一「装不上就不能用」的数据。
+    #[error("load dictionary: {0}")]
+    Dictionary(#[from] qingjian_dictionary::DictionaryError),
+
+    /// 释义表装不起来。
+    #[error("load glossary: {0}")]
+    Glossary(#[from] qingjian_translate::GlossaryError),
+
+    /// 语言模型装不起来。
+    #[error("load language model: {0}")]
+    LanguageModel(#[from] qingjian_lm::LmError),
+
+    /// 连不上 IBus 总线，或者总线名被占了。
+    #[error("ibus: {0}")]
+    Ibus(String),
 }
