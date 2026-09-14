@@ -4,37 +4,33 @@
 //! 经 [`View`] 折成 IBus 面板认的三样（preedit / 候选表 / 辅助行）再发信号出去。
 //! **不做任何排序、查词或文本变换**——那些在 Core 里。
 
-use std::sync::{Arc, Mutex};
-
 use qingjian_platform::protocol::KeyOutcome;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::Value;
 
+use super::shared::Shared;
 use super::variant;
 use super::view::View;
-use crate::dispatch::Router;
 use crate::keys::{KeyInput, modifiers};
 
 /// 一个输入上下文的引擎对象。
 ///
 /// Router 放在 `Mutex` 里而不是另开一条工人线程：`Router` 是 `Send`（只是因为 Engine 内部那几个
 /// `RefCell` 缓存不是 `Sync`），加把锁串行访问就满足 zbus 对接口对象 `Send + Sync` 的要求。
+/// 锁的毒化恢复与 panic 隔离在 [`Shared`]。
 pub struct IBusEngine {
     /// 进程内唯一的 Router，几个引擎对象共用（同一时刻只有一个上下文有焦点）。
-    router: Arc<Mutex<Router>>,
+    router: Shared,
 }
 
 impl IBusEngine {
-    pub fn new(router: Arc<Mutex<Router>>) -> Self {
+    pub fn new(router: Shared) -> Self {
         Self { router }
     }
 
     /// 把一帧发给面板：preedit、候选表、辅助行各发一次，空的就发隐藏。
     async fn present(&self, emitter: &SignalEmitter<'_>) -> zbus::Result<()> {
-        let frame = {
-            let router = self.router.lock().expect("Router 锁");
-            router.current_frame()
-        };
+        let frame = self.router.lock().current_frame();
         let view = View::from_frame(&frame);
 
         if view.preedit.is_empty() {
@@ -91,9 +87,12 @@ impl IBusEngine {
         if modifiers::is_release(state) {
             return false;
         }
-        let response = {
-            let mut router = self.router.lock().expect("Router 锁");
+        // 按键是最容易踩到边界情况的地方，拦一层 panic：拦下后组句已清干净，这个键让给应用
+        let Some(response) = self.router.guarded("按键", |router| {
             router.handle_key(KeyInput::new(keyval, keycode, state))
+        }) else {
+            let _ = self.present(&emitter).await;
+            return false;
         };
         let consumed = response.outcome == KeyOutcome::Consumed;
         if let Err(error) = self.commit(&emitter, response.commit).await {
@@ -113,10 +112,7 @@ impl IBusEngine {
 
     /// 焦点离开：缓冲原样上屏，与 macOS 的 `commitComposition`、Windows 的 `Commit` 一致。
     async fn focus_out(&mut self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
-        let text = {
-            let mut router = self.router.lock().expect("Router 锁");
-            router.commit_raw()
-        };
+        let text = self.router.lock().commit_raw();
         tracing::debug!(?text, "焦点离开，结束组句");
         let _ = self.commit(&emitter, text).await;
         let _ = self.present(&emitter).await;
@@ -143,7 +139,7 @@ impl IBusEngine {
 
     /// 应用要求重置：丢掉组句不上屏。
     async fn reset(&mut self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
-        self.router.lock().expect("Router 锁").reset_composition();
+        self.router.lock().reset_composition();
         let _ = self.present(&emitter).await;
     }
 
@@ -153,7 +149,7 @@ impl IBusEngine {
     }
 
     async fn disable(&mut self) {
-        self.router.lock().expect("Router 锁").reset_composition();
+        self.router.lock().reset_composition();
         tracing::debug!("停用");
     }
 

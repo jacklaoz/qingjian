@@ -1,13 +1,13 @@
 //! `--ibus` 模式：装好 Router，连上 IBus，一边服务一边看配置文件。
 
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use qingjian_platform::Config;
 
-use crate::dispatch::{Router, RouterConfig};
+use crate::dispatch::RouterConfig;
 use crate::error::ShellError;
 use crate::ibus::service;
+use crate::ibus::shared::Shared;
 use crate::startup;
 
 /// 配置文件轮询间隔与学习数据落盘的节拍，与 macOS 壳的定时器一致（那边是每秒看一次 mtime）。
@@ -16,8 +16,8 @@ const TICK: Duration = Duration::from_secs(1);
 /// 起服务并一直跑，直到收到 Ctrl-C / SIGTERM。
 pub async fn run() -> Result<(), ShellError> {
     let (router, config_path) = startup::build()?;
-    let router = Arc::new(Mutex::new(router));
-    let connection = service::serve(Arc::clone(&router))
+    let router = Shared::new(router);
+    let connection = service::serve(router.clone())
         .await
         .map_err(|error| ShellError::Ibus(error.to_string()))?;
     tracing::info!("青简已接上 IBus，等按键");
@@ -29,7 +29,7 @@ pub async fn run() -> Result<(), ShellError> {
             _ = ticker.tick() => {
                 watcher.poll(&router);
                 // 云联想 / 释义兜底的异步结果借这个节拍收，学习数据也在这里到点落盘
-                router.lock().expect("Router 锁").tick();
+                router.guarded("定时节拍", |router| router.tick());
             }
             _ = tokio::signal::ctrl_c() => {
                 tracing::info!("收到 Ctrl-C，落盘退出");
@@ -37,7 +37,7 @@ pub async fn run() -> Result<(), ShellError> {
             }
         }
     }
-    router.lock().expect("Router 锁").flush_learning();
+    router.lock().flush_learning();
     drop(connection);
     Ok(())
 }
@@ -58,7 +58,7 @@ impl ConfigWatcher {
         Self { path, seen }
     }
 
-    fn poll(&mut self, router: &Arc<Mutex<Router>>) {
+    fn poll(&mut self, router: &Shared) {
         let current = modified(&self.path);
         if current == self.seen {
             return;
@@ -67,10 +67,7 @@ impl ConfigWatcher {
         match Config::load(&self.path) {
             Ok(config) => {
                 tracing::info!(path = %self.path.display(), "配置变了，热加载");
-                router
-                    .lock()
-                    .expect("Router 锁")
-                    .set_config(RouterConfig::from(&config));
+                router.lock().set_config(RouterConfig::from(&config));
             }
             // 解析失败沿用上一份：用户正在编辑保存到一半也不能把输入法弄瘫
             Err(error) => tracing::error!(%error, "配置读不了，沿用上一份"),

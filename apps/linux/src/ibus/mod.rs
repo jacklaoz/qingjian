@@ -11,5 +11,6 @@ pub mod component;
 pub mod engine;
 pub mod factory;
 pub mod service;
+pub mod shared;
 pub mod variant;
 pub mod view;

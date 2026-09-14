@@ -4,19 +4,18 @@
 //! 环境变量（正常情况走这条）、`ibus address` 会读的那个地址文件、以及用户手动指定的。
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 
 use zbus::connection::Builder;
 
 use super::component::COMPONENT_NAME;
 use super::factory::IBusFactory;
-use crate::dispatch::Router;
+use super::shared::Shared;
 
 /// 工厂对象挂在这个路径，IBus 写死的。
 const FACTORY_PATH: &str = "/org/freedesktop/IBus/Factory";
 
 /// 连上总线、挂好工厂、占住组件名。返回的连接活着服务就活着。
-pub async fn serve(router: Arc<Mutex<Router>>) -> Result<zbus::Connection, zbus::Error> {
+pub async fn serve(router: Shared) -> Result<zbus::Connection, zbus::Error> {
     let address = bus_address().ok_or_else(|| {
         zbus::Error::Address("找不到 IBus 总线地址（IBUS_ADDRESS 没设，地址文件也没有）".to_owned())
     })?;

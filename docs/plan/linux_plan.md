@@ -98,7 +98,7 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
 |---|---|---|
 | **L0 打地基**（2026-09-14 做完） | `apps/linux/` 骨架；XDG 路径（配置 `~/.config/qingjian/`、数据 `~/.local/share/qingjian/`、日志 `~/.local/state/qingjian/`）；`qingjian-platform` 补 Linux 臂（`config/apps.rs` 与 `config/shortcut.rs` 现有 `cfg(windows)` 分支、`resources.rs` 加 `/usr/share/qingjian`）；xkbcommon keysym → Core 输入的映射表（A 与 C 共用） | 2–3 天 |
 | **L1 方案 C 跑通** | zbus 实现 IBus engine 接口；`ProcessKeyEvent` 接 Core（分流规则对齐 macOS `handle_text` / `handle_command`）；preedit + lookup table + commit；Engine 钉单线程；`config.toml` 热加载 | 4–6 天 |
-| **L2 能日用** | 云联想 / 神经重排的轮询定时器；学习数据落盘 + 激活期间每 60 秒 flush；边界 `catch_unwind`；`.deb` + `.rpm`；数据分包 | 4–5 天 |
+| **L2 能日用**（2026-09-14 做了前半） | ~~云联想 / 神经重排的轮询定时器~~、~~学习数据落盘 + 每 60 秒 flush~~、~~边界 `catch_unwind`~~ 已随 L1 一起做；还差 `.deb` + `.rpm` 与数据分包 | 剩 2–3 天 |
 | ↑ **到这里可发 Linux alpha** | | **≈ 2 周** |
 | **L3 合入渲染层** | `renderer-spike` 合进 main（连同 `docs/design/rendering.md`）；按键分流抽成共用 crate 供三端复用 | 见分支现状 |
 | **L4 方案 A 自绘（仅 wlroots）** | `wayland-client` 绑 `zwp_input_method_manager_v2` + `keyboard_grab`；`zwp_input_popup_surface_v2` 贴 `qingjian-render` 的位图到 `wl_shm`；启动时探测合成器有没有 `input-method-v2`，没有就落回 C 的 IBus 路径 | 5–8 天 |
@@ -123,6 +123,15 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
   做不到的话 L1 的译文只能进 aux text，产品形态要重新看。这是 L1 第一天就该验的事。
 
 ## 六、实施记录
+
+### L2 前半（2026-09-14，做完）
+
+轮询节拍、每 60 秒落盘、配置热加载随 L1 一起做了。另外补了边界的 panic 隔离（`ibus/shared.rs`）：
+按 `docs/design/architecture.md`「崩溃不丢」那条，拦下后把组句清干净、这个键让给应用，输入法接着服务。
+**顺带修掉一个把整个输入法拖死的写法**：原先每处都是 `lock().expect(...)`，而 `Mutex` 一旦被 panic 毒化，
+之后每次 `lock()` 都返回错误——等于「崩过一次就再也打不了字」。现在统一走 `Shared::lock`，毒化了就把状态取回来接着用。
+
+剩下的是打包（`.deb` / `.rpm`）与一百多兆随包数据怎么分三个包，那部分要在装机环境里验，没法在开发机上跑完。
 
 ### L1（2026-09-14，做完）
 
