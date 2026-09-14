@@ -17,6 +17,7 @@ README.md 只介绍项目，所有技术内容放在这里，分四类：前三�
 | [design/candidate-ui.md](design/candidate-ui.md) | 候选窗口、按键约定与翻译 annotation 的设计 |
 | [design/landscape.md](design/landscape.md) | 同类项目（水杉、Rime）、可用数据源及其许可 |
 | [plan/roadmap.md](plan/roadmap.md) | 分阶段路线图、各阶段的依赖关系与已完成项 |
+| [plan/linux_plan.md](plan/linux_plan.md) | Linux 支持计划（2026-09-14，只做 Wayland）：与前两个平台不同的三件事、原生 `input-method-v2` 自绘 / Fcitx5 addon / IBus 系统面板三个方案、选定的 C → A 分期与验收 |
 | [plan/zh_tw_support_plan.md](plan/zh_tw_support_plan.md) | 繁体输出与台湾注音支持的分析与方案（贡献者 pinchiu，#22）：读音标准差异、台湾用语、简转繁一对多；两条路线 |
 | [plan/todo.md](plan/todo.md) | 待办清单，按「从自用到能给别人用」排 |
 | [notes/crate-notes.md](notes/crate-notes.md) | 各 crate / app / tool 的实现要点：入口类型、数据文件、常数、生成命令 |

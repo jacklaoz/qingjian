@@ -106,4 +106,5 @@
     模型单文件 `.qjm` 已做（2026-09-12，复用 `.qj` 容器 `Kind::Model`，`find_model` 先 `.qjm` 再三件套目录，`pack model` / `tools/release/pack-model.sh`，
     data Release 传 `model.qjm`，bundle.sh / qingjian.iss 只带一个文件），待 mac 与 box 真机各装一次验加载与重排；
     密码框已按 TSF 规范做（2026-09-12）：`KEYBOARD_DISABLED` compartment 整键放行不组句，`IS_PRIVATE` / 密码 / PIN 输入范围为私密（组句但不学不记不发云端，`ClientMessage::Privacy` → `Engine::set_private`），box 真机验过：Edge 密码框整键放行；InPrivate 网页文本框报 `IS_SEARCH` 不报 `IS_PRIVATE`，私密路径只靠单测覆盖；CI 两个 job 都从 `data` Release 取 `model.qjm`（已做）。
-- [ ] Linux IBus / Fcitx（Phase 5）；配置同步、跨平台词库
+- [ ] Linux（Phase 5，**只做 Wayland**，方案与分期见 [linux_plan.md](linux_plan.md)）：先 IBus + 系统面板打通（GNOME / KDE 的终态），
+  再合入 `qingjian-render` 走原生 `input-method-v2` 自绘（只有 wlroots 系拿得到）；配置同步、跨平台词库
