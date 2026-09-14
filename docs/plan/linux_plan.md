@@ -98,7 +98,7 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
 |---|---|---|
 | **L0 打地基**（2026-09-14 做完） | `apps/linux/` 骨架；XDG 路径（配置 `~/.config/qingjian/`、数据 `~/.local/share/qingjian/`、日志 `~/.local/state/qingjian/`）；`qingjian-platform` 补 Linux 臂（`config/apps.rs` 与 `config/shortcut.rs` 现有 `cfg(windows)` 分支、`resources.rs` 加 `/usr/share/qingjian`）；xkbcommon keysym → Core 输入的映射表（A 与 C 共用） | 2–3 天 |
 | **L1 方案 C 跑通** | zbus 实现 IBus engine 接口；`ProcessKeyEvent` 接 Core（分流规则对齐 macOS `handle_text` / `handle_command`）；preedit + lookup table + commit；Engine 钉单线程；`config.toml` 热加载 | 4–6 天 |
-| **L2 能日用**（2026-09-14 做了前半） | ~~云联想 / 神经重排的轮询定时器~~、~~学习数据落盘 + 每 60 秒 flush~~、~~边界 `catch_unwind`~~ 已随 L1 一起做；还差 `.deb` + `.rpm` 与数据分包 | 剩 2–3 天 |
+| **L2 能日用**（2026-09-14 做完） | 轮询节拍、每 60 秒落盘、边界 `catch_unwind`、`.deb`（程序 / 数据 / 模型三个包）都已做；`.rpm` 还没有（没有能验的环境） | — |
 | ↑ **到这里可发 Linux alpha** | | **≈ 2 周** |
 | **L3 合入渲染层** | `renderer-spike` 合进 main（连同 `docs/design/rendering.md`）；按键分流抽成共用 crate 供三端复用 | 见分支现状 |
 | **L4 方案 A 自绘（仅 wlroots）** | `wayland-client` 绑 `zwp_input_method_manager_v2` + `keyboard_grab`；`zwp_input_popup_surface_v2` 贴 `qingjian-render` 的位图到 `wl_shm`；启动时探测合成器有没有 `input-method-v2`，没有就落回 C 的 IBus 路径 | 5–8 天 |
@@ -123,6 +123,18 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
   做不到的话 L1 的译文只能进 aux text，产品形态要重新看。这是 L1 第一天就该验的事。
 
 ## 六、实施记录
+
+### L2（2026-09-14，做完；`.rpm` 除外）
+
+`apps/linux/packaging/build-deb.sh` 打三个包：程序 2 MB、数据 27 MB、模型 49 MB。
+装到 `/usr/bin/qingjian-linux` + `/usr/share/qingjian/{data,assets}`，组件 XML 落 `/usr/share/ibus/component/`。
+同日在本机装了一遍并切成了会话输入法（im-config 从 fcitx5 改 ibus）。
+
+装完第一次自检就炸出一个**静默降级**的 bug，单测与开发机上都碰不到：
+`resources::bundled_root` 的开发布局回退是「exe 往上数三层」，装到 `/usr/bin` 之后往上三层正好是 `/`，
+而这台机器根目录下有个 `/data`，于是 `/` 被当成随包根，回落到几十条的样例词库——
+症状是「装好了、能启动、就是一个词都打不出」。改成先确认 exe 真在 `target/{debug,release}/` 里才认开发布局，
+补了三条测试钉住。这条 macOS 走自己的 `paths.rs` 不受影响，**Windows 与 Linux 共用这个函数**。
 
 ### L2 前半（2026-09-14，做完）
 

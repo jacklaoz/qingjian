@@ -115,6 +115,8 @@ wlroots 的原生 `input-method-v2` 自绘（L4）与打包（L2）还没做。�
   主键盘区与小键盘区归同一个变体，`ISO_Left_Tab`（X11 的 Shift+Tab）也归成 `Tab` 由修饰键区分；
   `modifiers.rs` 把 X11 修饰键掩码（IBus / GDK 同一套）翻成协议里的 `KeyModifiers`——六个位本来就平台无关所以复用它，
   但按键本身不复用协议的 `KeyEvent`（那个的 `virtual_key` 是 Windows VK 码，与 keysym 取值空间不同）。
+- `packaging/build-deb.sh`：打三个 `.deb`（程序 / 数据 / 模型）。装到 `/usr/bin` + `/usr/share/qingjian`，
+  组件 XML 落 `/usr/share/ibus/component/`，postinst / postrm 调 `ibus write-cache --system` 让 ibus 重扫。
 - `check.rs`：`--check` 自检，装机后第一件事跑它。只定位与读配置、不装配 Engine，所以数据没就位时也能跑完并说清楚缺什么；
   缺主词库或建不出用户目录时退出码 1。
 - `assembly/`：装 Engine。**是第三份**（macOS `host/init.rs`、Windows `assembly/` 是它的孪生），本身平台无关，

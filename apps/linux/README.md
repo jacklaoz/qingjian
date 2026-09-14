@@ -42,6 +42,26 @@ gdbus call --address "$ADDR" --dest org.freedesktop.IBus --object-path /org/free
 env GTK_IM_MODULE=ibus IBUS_ADDRESS="$ADDR" gnome-text-editor
 ```
 
+## 打包
+
+```bash
+apps/linux/packaging/build-deb.sh              # 三个 .deb 出在 target/deb/
+apps/linux/packaging/build-deb.sh --skip-data --skip-model   # 只打程序包
+```
+
+分三个包：`qingjian`（程序，2 MB）、`qingjian-data`（词库 / 语言模型 / 释义表，27 MB）、
+`qingjian-model`（本地整句模型，49 MB）。发行版不收一百多兆的单包，而且数据与模型的更新节奏跟代码不一样。
+程序包不依赖后两个：缺语言模型退化成一元词频、缺模型不重排，Core 本来就支持。
+
+数据来自 `data` 预发布（`docs/notes/release.md`），仓库里没有，打数据包前要先取：
+
+```bash
+BASE=https://github.com/qingjian-team/qingjian/releases/download/data
+mkdir -p data/generated data/model
+curl -sL "$BASE/qingjian-data.tar.gz" | tar xz -C data/generated
+curl -sL -o data/model/model.qjm "$BASE/model.qjm"
+```
+
 ## 目录怎么分
 
 只读的随包数据走 `qingjian_platform::resources`，按「与可执行文件同级 → 仓库开发布局 → `/usr/share/qingjian`」找；
