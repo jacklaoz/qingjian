@@ -99,6 +99,26 @@ Engine 侧在 `engine/rescoring/`：接了打分器就取 Viterbi 前 `RESCORE_P
   （首选命中率 / 字准确率 / 查询耗时；不依赖日志里当时选了什么，给整句排序与语言模型的改动当尺子），`--eval-save` 冻结成 `句子\t拼音\t上文` 三列文件，
   之后直接 `--eval-text` 它保证比的是同一份句子（本机的在 `data/eval/sentences.tsv`）。排序、整句、纠错的改动先跑它们再合。
 
+## apps/linux
+
+Linux 壳，**只做 Wayland**（方案与分期见 `docs/plan/linux_plan.md`）。现在是 L0 骨架：还没接输入法框架，装上不能打字。
+拆成 lib + bin（与 Windows Server 同形状）：模块在 `lib.rs`，`main.rs` 只解析参数与启动。
+
+- `paths.rs`：只读随包数据走 `qingjian_platform::resources`（新增 Linux 的系统布局 `/usr/local/share/qingjian` → `/usr/share/qingjian`，
+  因为发行版包把数据装在那里而可执行文件在 `/usr/bin`，两者不同级）；用户数据按 XDG 分三处：配置 `$XDG_CONFIG_HOME/qingjian`、
+  数据 `$XDG_DATA_HOME/qingjian`、日志 `$XDG_STATE_HOME/qingjian`（日志是「可以丢但留着有用」的状态，XDG 规定放 state）。
+  环境变量填相对路径时按 XDG 规定当没设，退回 `$HOME`。
+- `keys/`：只认 X11 keysym，IBus 的 `ProcessKeyEvent` 与 Wayland 键盘抓取经 xkbcommon 翻出来的都是它，所以这层不认 IBus 也不认 Wayland。
+  `keysym.rs` 是 `keysymdef.h` 的常量与「敲出来是哪个字符」（Latin-1 两段 + Unicode 段 `0x01000000|码点` + 小键盘数字，控制字符不算）；
+  `function.rs` 的 `FunctionKey` 只收 Core 真要分辨的那些，与 macOS `handle_command` / Windows `apply_function_key` 同一组，
+  主键盘区与小键盘区归同一个变体，`ISO_Left_Tab`（X11 的 Shift+Tab）也归成 `Tab` 由修饰键区分；
+  `modifiers.rs` 把 X11 修饰键掩码（IBus / GDK 同一套）翻成协议里的 `KeyModifiers`——六个位本来就平台无关所以复用它，
+  但按键本身不复用协议的 `KeyEvent`（那个的 `virtual_key` 是 Windows VK 码，与 keysym 取值空间不同）。
+- `check.rs`：`--check` 自检，装机后第一件事跑它。只定位与读配置、不装配 Engine，所以数据没就位时也能跑完并说清楚缺什么；
+  缺主词库或建不出用户目录时退出码 1。
+- `[apps]` 按应用配置在 Linux 上**永远不命中**：Wayland 拿不到前台应用标识，缺省名单
+  （`DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX`）是空的，配置模板里写明了原因。
+
 ## apps/macos
 
 IMK 输入法，源码按 `app / host / imk / candidates / menubar / preferences` 分目录。

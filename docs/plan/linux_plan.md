@@ -95,7 +95,7 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
 
 | 阶段 | 内容 | 估时 |
 |---|---|---|
-| **L0 打地基** | `apps/linux/` 骨架；XDG 路径（配置 `~/.config/qingjian/`、数据 `~/.local/share/qingjian/`、日志 `~/.local/state/qingjian/`）；`qingjian-platform` 补 Linux 臂（`config/apps.rs` 与 `config/shortcut.rs` 现有 `cfg(windows)` 分支、`resources.rs` 加 `/usr/share/qingjian`）；xkbcommon keysym → Core 输入的映射表（A 与 C 共用） | 2–3 天 |
+| **L0 打地基**（2026-09-14 做完） | `apps/linux/` 骨架；XDG 路径（配置 `~/.config/qingjian/`、数据 `~/.local/share/qingjian/`、日志 `~/.local/state/qingjian/`）；`qingjian-platform` 补 Linux 臂（`config/apps.rs` 与 `config/shortcut.rs` 现有 `cfg(windows)` 分支、`resources.rs` 加 `/usr/share/qingjian`）；xkbcommon keysym → Core 输入的映射表（A 与 C 共用） | 2–3 天 |
 | **L1 方案 C 跑通** | zbus 实现 IBus engine 接口；`ProcessKeyEvent` 接 Core（分流规则对齐 macOS `handle_text` / `handle_command`）；preedit + lookup table + commit；Engine 钉单线程；`config.toml` 热加载 | 4–6 天 |
 | **L2 能日用** | 云联想 / 神经重排的轮询定时器；学习数据落盘 + 激活期间每 60 秒 flush；边界 `catch_unwind`；`.deb` + `.rpm`；数据分包 | 4–5 天 |
 | ↑ **到这里可发 Linux alpha** | | **≈ 2 周** |
@@ -121,7 +121,28 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
 - **待验证的假设**：IBus 的 `IBusAttribute` 到底能不能在 lookup table 的候选文本里做到「译文换色」而不影响候选词本身；
   做不到的话 L1 的译文只能进 aux text，产品形态要重新看。这是 L1 第一天就该验的事。
 
-## 六、验收
+## 六、实施记录
+
+### L0（2026-09-14，做完）
+
+`apps/linux` 进 workspace，拆成 lib + bin（与 Windows Server 同形状）。`cargo run -p qingjian-linux -- --check` 能跑，
+fmt / clippy / 全量测试（CI 的 `--workspace --exclude qingjian-macos`）全绿，新增 15 个测试。
+
+平台层改了三处 Linux 臂：`config/apps.rs` 的缺省名单、`config/mod.rs` 的两个配置模板宏、`resources.rs` 的系统布局。
+原来的 `cfg(not(windows))` 把 Linux 一并算进 macOS，缺省名单会给 Linux 发一份 bundle identifier；
+现在门控改成 `cfg(target_os = "macos")` 与 `cfg(not(any(windows, target_os = "macos")))`，
+`default_list_follows_the_platform` 这个测试也跟着改了断言。
+
+两条动手后才看清的事：
+
+- **`[apps]` 按应用配置在 Linux 上确定做不了**，不是「Wayland 上大概率要放弃」那种程度。缺省名单直接定成空的
+  （`DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX`），配置模板里写明原因并指向 `[general] english_candidates`。
+- **Engine 装配（Windows `assembly/`、macOS `host/init.rs`）不能提到 `qingjian-platform`。** 它本身是平台无关的，
+  看着正是共用的料，但 TSF DLL 依赖 platform crate，而架构约束写着「DLL 不能带 Engine 的依赖树」；
+  把 learning / translate / lm 的依赖加进 platform 就等于给 DLL 挂上整棵树。它得等 L3 那个新 crate，
+  所以 L0 不碰装配，Engine 装配推到 L1 各写各的、L3 再收口。
+
+## 七、验收
 
 与前两个平台同一把尺子，不新立标准：
 

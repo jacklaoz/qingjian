@@ -1,0 +1,21 @@
+[package]
+name = "qingjian-linux"
+description = "Linux 输入法壳（只做 Wayland）：把系统输入事件翻译成 Engine 的输入，把 Engine 返回的候选画出来"
+# apps/* 各壳独立发布，版本写死在自己这里（见 docs/contributing.md）
+version = "0.1.0-dev"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "qingjian-linux"
+path = "src/main.rs"
+
+[dependencies]
+qingjian-platform.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

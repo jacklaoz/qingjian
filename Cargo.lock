@@ -2270,6 +2270,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "qingjian-linux"
+version = "0.1.0-dev"
+dependencies = [
+ "qingjian-platform",
+ "thiserror 2.0.20",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "qingjian-lm"
 version = "0.1.1"
 dependencies = [
