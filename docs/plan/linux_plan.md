@@ -136,6 +136,17 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
 症状是「装好了、能启动、就是一个词都打不出」。改成先确认 exe 真在 `target/{debug,release}/` 里才认开发布局，
 补了三条测试钉住。这条 macOS 走自己的 `paths.rs` 不受影响，**Windows 与 Linux 共用这个函数**。
 
+#### 装机后的验收数字（2026-09-14，GNOME / Wayland，真产品数据）
+
+装完切成会话输入法日常打了一阵，`ibus` + 三个 `.deb`（程序 / 数据 / 模型）：
+
+- **每键耗时**：`qingjian-cli --typing zhonghuarenmingongheguowansui`（release）29 键，
+  **最慢 3.34 ms、平均 857 µs**，项目标准是 10 ms 以内 —— 达标，且与 macOS 同量级。
+  整句转换一口气出「中华人民共和国万岁」。
+- **引擎常驻内存** 约 104 MB（词库 mmap + 42 MB 语言模型 + 释义表）。
+- **学习链路**：`user.tsv` / `user-ngram.tsv` / `user-choices.tsv` / `user-english.tsv` / `usage.tsv`
+  都在按预期写，中英混输（`clone` 原样直通）与整句、词级都走通。
+
 ### L2 前半（2026-09-14，做完）
 
 轮询节拍、每 60 秒落盘、配置热加载随 L1 一起做了。另外补了边界的 panic 隔离（`ibus/shared.rs`）：
