@@ -131,11 +131,12 @@ async fn typing_pinyin_reaches_the_panel_and_commits() {
         assert!(consumed, "拼音字母该被吃掉：{keyval}");
     }
 
-    // 断言的是「引擎走了非空 preedit 那条分支」而不是 preedit 的内容：
-    // 带内容的 `UpdatePreeditText` 在这个**无面板**的合成环境里不会转发给客户端
-    // （`--panel disable` 起的 daemon 没有面板，IBus 的 preedit 路由与面板有关；
-    // 同一个 IBusText 在候选表与上屏两条路上都正常，所以不是序列化的问题）。
-    // preedit 的实际显示要在真实桌面会话里验，见 README 的「待真机验」。
+    // 断言的是「引擎走了非空 preedit 那条分支」而不是 preedit 的内容。
+    //
+    // 带内容的 `UpdatePreeditText` 不会转发到这个**合成客户端**上（起不起面板都一样，2026-09-14 两种都试过）：
+    // 真实应用的 preedit 是 GTK / Qt 的输入法模块自己渲染的，走的不是「客户端订阅 InputContext 信号」这条路。
+    // 同一个 `IBusText` 在候选表与上屏两条路上都正常，所以不是序列化的问题——
+    // 2026-09-14 在 gnome-text-editor 里真机验过：拼音行、候选窗、上屏、学习全都对。
     collected
         .wait_for("ShowPreeditText", "")
         .await

@@ -27,10 +27,20 @@ env IBUS_COMPONENT_PATH=/tmp/qj/component ibus-daemon -r -d -s --panel disable -
 cargo test -p qingjian-linux --test ibus_engine -- --nocapture
 ```
 
-**待真机验**：带内容的 `UpdatePreeditText` 在上面这个**无面板**环境里不转发给客户端
-（`--panel disable` 的 daemon 没有面板，IBus 的 preedit 路由与面板有关；同一个 `IBusText`
-在候选表与上屏两条路上都正常，所以不是序列化的问题）。组句拼音在应用里到底怎么显示，
-要在真实桌面会话里装上再看。
+这个测试只断言到「引擎走了非空 preedit 那条分支」：带内容的 `UpdatePreeditText` 不会转发到合成客户端上
+（起不起面板都一样）——真实应用的 preedit 由 GTK / Qt 的输入法模块自己渲染，不走「客户端订阅 InputContext 信号」这条路。
+
+**真机验过**（2026-09-14，GNOME / Wayland / gnome-text-editor）：`nihao` → 你好、`keyi` → 可以、
+`cece` → 的的（整句）都对，拼音行与候选窗正常，学习六张表照常落盘。
+在**不动当前输入法**的前提下这么验：起私有 daemon（上面那几条）后把全局引擎切成青简，
+再单独给一个应用指过去——其他程序照旧用系统自己的输入法。
+
+```bash
+ADDR=$(ibus address)
+gdbus call --address "$ADDR" --dest org.freedesktop.IBus --object-path /org/freedesktop/IBus \
+  --method org.freedesktop.IBus.SetGlobalEngine qingjian
+env GTK_IM_MODULE=ibus IBUS_ADDRESS="$ADDR" gnome-text-editor
+```
 
 ## 目录怎么分
 
