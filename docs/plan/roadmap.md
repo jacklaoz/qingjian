@@ -162,7 +162,10 @@
   - [x] preedit 内联下划线、候选窗（词性 + 译文 + 分页 + 阴影）、云联想、失焦上屏、中英切换、设置界面、Inno 安装器
   - [x] 候选窗渲染搬进 Server 进程 + `uiAccess` + 自签，覆盖微软商店 / 任务栏搜索等高 z-band 宿主
   - [ ] 发版：Certum 开源代码签名证书、`windows-v<版本>` 标签与 CI
-- [ ] Linux（只做 Wayland，不做 X11）：三个方案的取舍、选定的 C → A 分期与验收见 [linux_plan.md](linux_plan.md)
+- [~] Linux（2026-09-14 起，`apps/linux`）：走 IBus 接上，X11 与 Wayland 都能用；开发机上装成会话输入法日常在打。
+  三个 `.deb`（程序 / 数据 / 模型）、84 单测 + 对真 daemon 的端到端；每键最慢 3.34 ms、平均 857 µs。
+  方案取舍与分期见 [linux_plan.md](linux_plan.md)，过程与踩的坑见 [notes/linux-bringup.md](../notes/linux-bringup.md)。
+  还差：`.rpm`、自绘候选窗（要先合 `renderer-spike`，且只有 wlroots 系拿得到）、设置界面
 - [ ] 配置同步
 - [ ] 跨平台词库
 
