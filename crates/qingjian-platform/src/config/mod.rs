@@ -21,8 +21,8 @@ use toml_edit::DocumentMut;
 use crate::error::ConfigError;
 
 pub use apps::{
-    AppsConfig, DEFAULT_ENGLISH_CANDIDATES_OFF, DEFAULT_ENGLISH_CANDIDATES_OFF_MACOS,
-    DEFAULT_ENGLISH_CANDIDATES_OFF_WINDOWS,
+    AppsConfig, DEFAULT_ENGLISH_CANDIDATES_OFF, DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX,
+    DEFAULT_ENGLISH_CANDIDATES_OFF_MACOS, DEFAULT_ENGLISH_CANDIDATES_OFF_WINDOWS,
 };
 pub use dictionaries::{DEFAULT_DOMAINS, DictionariesConfig};
 pub use general::{DEFAULT_PAGE_KEYS, GeneralConfig, MAX_PAGE_SIZE, PAGE_KEY_OPTIONS};
@@ -81,7 +81,7 @@ fn deserialize_phrases<'de, D: serde::Deserializer<'de>>(
 
 /// 模板的 `[apps]` 一节（macOS）：应用按 bundle identifier 认。名单要与 [`DEFAULT_ENGLISH_CANDIDATES_OFF`] 一致，
 /// 测试 `template_parses_to_defaults` 会核对。用宏而不是常量，是因为 `concat!` 只收字面量。
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 macro_rules! template_apps {
     () => {
         r#"[apps]
@@ -114,8 +114,21 @@ english_candidates_off = [
     };
 }
 
+/// 模板的 `[apps]` 一节（Linux）：Wayland 客户端拿不到前台应用标识，这一节读得进但永远不命中，
+/// 所以名单是空的，只留一行注释说明为什么。名单要与 [`DEFAULT_ENGLISH_CANDIDATES_OFF`] 一致。
+#[cfg(not(any(windows, target_os = "macos")))]
+macro_rules! template_apps {
+    () => {
+        r#"[apps]
+# 按应用改行为。Wayland 不让客户端知道前台是哪个应用，所以这一节在 Linux 上填了也不会生效，留着是为了三个平台一份配置
+# 终端 / 编辑器里不想要英文候选的话，用 [general] english_candidates = false 整个关掉
+english_candidates_off = []
+"#
+    };
+}
+
 /// 模板 `[shortcut]` 一节里的修饰键组合（macOS 命名）。缺省值两个平台一样，只是写法与注释按平台的键名。
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 macro_rules! template_shortcut_keys {
     () => {
         r#"# 数字键配这些修饰键上屏候选的译词：translation 第一个译词，translation_second 第二个（候选右侧有两个译词时）
@@ -141,6 +154,24 @@ translation = "ctrl"
 translation_second = "shift+ctrl"
 # 把应用里选中的文字译成学习语言（要开着云服务）：Windows 上还没接
 translate_selection = "ctrl+alt+t"
+# 数字键配这些修饰键删掉候选：用户词（云端选过的、自动造的）整个删掉，词库里的词清掉对它的学习记录。组句中要打感叹号先把词上屏
+delete_candidate = "shift"
+"#
+    };
+}
+
+/// 模板 `[shortcut]` 一节里的修饰键组合（Linux）：配置仍按 macOS 命名写（option 落到 Alt、command 落到 Super），
+/// 缺省值与 macOS 一份。注释按 Linux 的键名，并提醒 Alt+数字常被窗口管理器占去切工作区。
+#[cfg(not(any(windows, target_os = "macos")))]
+macro_rules! template_shortcut_keys {
+    () => {
+        r#"# 数字键配这些修饰键上屏候选的译词：translation 第一个译词，translation_second 第二个（候选右侧有两个译词时）
+# 任意修饰键组合（option / shift / control / command 用 + 连；在 Linux 上 option 是 Alt、command 是 Super）
+# 不少窗口管理器把 Alt+数字占去切工作区了，被占了就改成别的组合，例如 translation = "control+option"
+translation = "option"
+translation_second = "shift+option"
+# 把应用里选中的文字译成学习语言（要开着云服务）：Linux 上还没接
+translate_selection = "control+option+t"
 # 数字键配这些修饰键删掉候选：用户词（云端选过的、自动造的）整个删掉，词库里的词清掉对它的学习记录。组句中要打感叹号先把词上屏
 delete_candidate = "shift"
 "#

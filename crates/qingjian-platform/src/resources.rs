@@ -5,11 +5,17 @@
 //! - **开发**：仓库 `ime/` 目录，exe 在 `ime\target\{debug,release}\` 下，往上三层。
 //!
 //! 相对写法两套布局一致（如 `data/generated/dict.qj`、`assets/levels`），只有根不同。
+//! Linux 多一套**系统布局**：发行版包把数据装进 `/usr/share/qingjian`，可执行文件在 `/usr/bin`，两者不同级。
 //! Windows 的 Server 进程与设置窗口共用；macOS 有自己的 `paths.rs`，不走这里。
 
 use std::path::{Path, PathBuf};
 
-/// 随包资源的根目录：其下有 `data/` 与 `assets/`。装机布局与 exe 同级，否则回落开发布局的仓库根；两处都没有为 `None`。
+/// Linux 发行版包的数据位置，按先后顺序找：本地装的优先于发行版装的。
+#[cfg(target_os = "linux")]
+const SYSTEM_ROOTS: [&str; 2] = ["/usr/local/share/qingjian", "/usr/share/qingjian"];
+
+/// 随包资源的根目录：其下有 `data/` 与 `assets/`。装机布局与 exe 同级，否则回落开发布局的仓库根，
+/// Linux 上再回落系统布局（`/usr/share/qingjian`）；都没有为 `None`。
 pub fn bundled_root() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let exe_dir = exe.parent()?;
@@ -17,8 +23,28 @@ pub fn bundled_root() -> Option<PathBuf> {
         return Some(exe_dir.to_path_buf());
     }
     // exe → {debug,release} → target → ime
-    let dev_root = exe.ancestors().nth(3)?;
-    has_resources(dev_root).then(|| dev_root.to_path_buf())
+    if let Some(dev_root) = exe.ancestors().nth(3)
+        && has_resources(dev_root)
+    {
+        return Some(dev_root.to_path_buf());
+    }
+    system_root()
+}
+
+/// 系统布局的根（只有 Linux 有）：发行版包把数据装在这里，而可执行文件在 `/usr/bin`，不与它同级。
+#[cfg(target_os = "linux")]
+fn system_root() -> Option<PathBuf> {
+    SYSTEM_ROOTS
+        .iter()
+        .map(Path::new)
+        .find(|dir| has_resources(dir))
+        .map(Path::to_path_buf)
+}
+
+/// 别的平台没有系统布局：装机布局与开发布局之外就是没有。
+#[cfg(not(target_os = "linux"))]
+fn system_root() -> Option<PathBuf> {
+    None
 }
 
 /// 一个随包资源的完整路径（相对随包根，如 `data/generated/dict.qj`）；根找不到或该路径不存在为 `None`。

@@ -48,13 +48,22 @@ pub const DEFAULT_ENGLISH_CANDIDATES_OFF_WINDOWS: &[&str] = &[
     "neovide.exe",
 ];
 
+/// 缺省不给英文候选的应用（Linux）：**空的**。青简在 Linux 上只做 Wayland，而 Wayland 客户端拿不到
+/// 前台应用的标识（X11 的 `_NET_ACTIVE_WINDOW` / `WM_CLASS` 那条路随 X11 一起排除了），
+/// 所以这份名单无论写什么都不会命中。配置项仍然读得进、不报错，只是永远不生效。
+pub const DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX: &[&str] = &[];
+
 /// 本平台的缺省名单：macOS 上是 bundle identifier，Windows 上是 exe 文件名。
 #[cfg(windows)]
 pub const DEFAULT_ENGLISH_CANDIDATES_OFF: &[&str] = DEFAULT_ENGLISH_CANDIDATES_OFF_WINDOWS;
 
 /// 本平台的缺省名单：macOS 上是 bundle identifier，Windows 上是 exe 文件名。
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 pub const DEFAULT_ENGLISH_CANDIDATES_OFF: &[&str] = DEFAULT_ENGLISH_CANDIDATES_OFF_MACOS;
+
+/// 本平台的缺省名单：Linux（与其余未适配的平台）拿不到应用标识，是空的。
+#[cfg(not(any(windows, target_os = "macos")))]
+pub const DEFAULT_ENGLISH_CANDIDATES_OFF: &[&str] = DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX;
 
 /// 配置文件 `[apps]` 分节：按应用改行为。应用的标识 macOS 上是 bundle identifier，Windows 上是宿主进程的 exe 文件名。
 ///
@@ -142,9 +151,20 @@ mod tests {
         );
         assert_eq!(
             apps.english_candidates_off("com.microsoft.VSCode"),
-            !cfg!(windows),
+            cfg!(target_os = "macos"),
             "macOS 缺省名单按 bundle identifier"
         );
+    }
+
+    /// Linux 拿不到前台应用标识（只做 Wayland），缺省名单必须是空的：留着 macOS 的 bundle identifier
+    /// 只会让人以为这功能在 Linux 上生效。
+    #[test]
+    #[cfg(not(any(windows, target_os = "macos")))]
+    fn linux_default_list_is_empty() {
+        let apps = AppsConfig::default();
+        assert!(!apps.has_english_candidates_off());
+        assert!(!apps.english_candidates_off("com.microsoft.VSCode"));
+        assert!(!apps.english_candidates_off("Code.exe"));
     }
 
     #[test]
