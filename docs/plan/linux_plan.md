@@ -3,7 +3,18 @@
 Phase 5 的后半段（前半是 Windows TSF）。2026-09-14 定的路线与分期，实施前这份文件是唯一依据；
 动手后实现与这里分歧，以代码为准并回来改这份文件。
 
-**只做 Wayland，不做 X11。** 这条决定贯穿全文，直接决定了候选窗能不能自绘（见下面前提 ③）。
+**「只做 Wayland」说的是自绘那一步，不是整个 Linux 支持。** 容易误读，先说清楚：
+
+| | X11 | GNOME / KDE Wayland | wlroots |
+|---|---|---|---|
+| 方案 C（IBus，已落地） | ✅ 可用 | ✅ 可用 | ✅ 可用 |
+| L4 自绘候选窗 | ❌ 不做 | ❌ 做不了（协议不给） | ✅ 目标 |
+| `[apps]` 按应用配置 | 技术上可行（`WM_CLASS`），**不做** | 做不到 | 做不到 |
+
+方案 C 压根不碰显示服务器——候选窗的绘制与定位全是 IBus 面板的活，我们只收 keysym、吐候选，
+所以它在 X11 上照常工作（2026-09-14 在 XWayland 的 X11 客户端里验过）。
+**不做 X11 的是 L4**：不会为 X11 写 override-redirect 的自绘窗口，X11 用户拿到的体验
+与 GNOME / KDE Wayland 用户一样，都是 IBus 面板画候选。
 
 Core 已经是平台无关的，Linux 要做的全部是壳：把系统输入事件翻译成 `Engine` 的输入，把 `Engine` 返回的候选画出来。
 判断标准与 macOS / Windows 一致：**这份计划里不应该出现任何排序、词库、翻译或文本变换的改动**。
@@ -22,7 +33,7 @@ Core 已经是平台无关的，Linux 要做的全部是壳：把系统输入事
 编译期断言钉着），所以套一层 `Mutex` 就满足 zbus 对接口对象 `Send + Sync` 的要求，不必像原先设想的那样
 另开一条工人线程来持有它。`Router` 因此可以直接 `Arc<Mutex<Router>>` 交给 D-Bus 那层。
 
-**③ 只做 Wayland，不做 X11**（2026-09-14 定）。这把最大的约束推到了台前：**Wayland 客户端不能给自己的窗口绝对定位**，
+**③ 自绘只做 Wayland，不做 X11**（2026-09-14 定）。这把最大的约束推到了台前：**Wayland 客户端不能给自己的窗口绝对定位**，
 所以候选窗摆不到光标处这件事没有 X11 那种 override-redirect 的绕法。输入法 popup 在 Wayland 上唯一的正路是
 `input-method-unstable-v2` 的 `zwp_input_popup_surface_v2`——由合成器按文本光标替你摆位——而**只有 wlroots 系
 （sway / Hyprland / river / niri）实现它，GNOME 与 KDE 都不对第三方开放**。
@@ -106,8 +117,9 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
 
 ## 五、已知风险与未决问题
 
-- **`[apps]` 按应用配置在 Linux 上直接不可用。** 它在 macOS 靠 bundle identifier、Windows 靠 exe 文件名；
-  Wayland 客户端**拿不到前台应用标识**，而 X11 的 `_NET_ACTIVE_WINDOW` / `WM_CLASS` 这条路已经排除（前提 ③）。
+- **`[apps]` 按应用配置在 Linux 上不做。** 它在 macOS 靠 bundle identifier、Windows 靠 exe 文件名；
+  Wayland 客户端**拿不到前台应用标识**。X11 下查 `_NET_ACTIVE_WINDOW` 的 `WM_CLASS` 技术上可行，
+  但只有一半平台能用的功能不值得单独实现，也会让「这个设置到底生不生效」变得看运气。
   结论：`[apps] english_candidates_off` 这类配置在 Linux 上读得进、但永远不命中。
   配置项要优雅降级（读到不报错、设置界面里标注「本平台不支持」），不要为它留半截实现。
 - **随包数据体积。** `dict.qj` 3 MB + 领域词库 7 MB + `lm.qj` 29 MB + 释义表 39 MB + `model.qjm` 56 MB ≈ 134 MB。
@@ -135,6 +147,16 @@ Linux 是第三份。按键分流是平台无关的（它只认字符、功能�
 而这台机器根目录下有个 `/data`，于是 `/` 被当成随包根，回落到几十条的样例词库——
 症状是「装好了、能启动、就是一个词都打不出」。改成先确认 exe 真在 `target/{debug,release}/` 里才认开发布局，
 补了三条测试钉住。这条 macOS 走自己的 `paths.rs` 不受影响，**Windows 与 Linux 共用这个函数**。
+
+#### X11 上也能用（2026-09-14 验过）
+
+`GDK_BACKEND=x11` 起一个走 XWayland 的真 X11 客户端，敲 `zhonghua` → 中华，
+两次敲错（`zhonoghua` / `zonghua`）都被拼写纠错救回来。`ibus-daemon -x` 起的 `ibus-x11` 做 XIM 桥。
+代码侧也对得上：`apps/linux/src` 里没有任何 Wayland 专有调用，唯一读 `WAYLAND_DISPLAY` 的地方是
+算 IBus 地址文件名，旁边就是 X11 分支（解析 `DISPLAY`、丢掉屏幕号、空主机名补 `unix`），有单测钉着。
+
+**保留**：输入日志在 Linux 上不记应用标识，所以没法从日志断定那次上屏一定发生在 X11 窗口里，
+这条结论靠的是操作者的报告加时间序列。要更硬的证据得在纯 X11 会话（不是 XWayland）里再跑一遍。
 
 #### 装机后的验收数字（2026-09-14，GNOME / Wayland，真产品数据）
 

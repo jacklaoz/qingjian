@@ -1,6 +1,8 @@
 # qingjian-linux
 
-青简的 Linux 输入法壳。**只做 Wayland，不做 X11**——方案取舍、分期与验收在
+青简的 Linux 输入法壳。走 IBus（方案 C），**X11 与 Wayland 都能用**——
+计划里的「只做 Wayland」说的是将来那一步自绘候选窗只做 wlroots 的 `input-method-v2`，不为 X11 单写窗口。
+方案取舍、分期与验收在
 [docs/plan/linux_plan.md](../../docs/plan/linux_plan.md)。
 
 现在到 **L1**：走 IBus 接上了（方案 C），敲拼音出候选、选词上屏、配置热加载都通了。
