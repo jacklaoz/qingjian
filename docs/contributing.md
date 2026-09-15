@@ -41,7 +41,7 @@
 
 ## 提交前、发版与外部 PR
 
-- 钩子：`.githooks/pre-commit`（禁装饰性分隔注释 `// ====` + fmt + clippy），`.githooks/pre-push`（全 workspace 测试）；`git config core.hooksPath .githooks` 启用一次。
+- 钩子：`.githooks/pre-commit`（禁装饰性分隔注释 `// ====` + fmt + clippy），`.githooks/pre-push`（全 workspace 测试），不在 macOS 上时两个都排除 `qingjian-macos`（同 CI 的 Linux job）；`git config core.hooksPath .githooks` 启用一次。
 - CI 三个 job（Linux 全量 / macOS 壳 / Windows 三 crate）都 `--locked`；Dependabot 升 actions；每周 `cargo audit`。
 - 发版：推 `<平台>-v<版本>` 标签触发 `release.yml`，门禁是版本号 = 标签且不带 -dev、标签在 main 上、产品数据按 SHA256SUMS 校验。
   CHANGELOG 手写、发版时由维护者统一改（PR 不动它）。流程与 Secrets 见 [notes/release.md](notes/release.md)。

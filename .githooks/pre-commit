@@ -15,4 +15,8 @@ if [[ -n "$staged_rs" ]]; then
 fi
 
 cargo fmt --all --check
-cargo clippy --all-targets -- -D warnings
+# qingjian-macos 依赖 objc2，只能在 Apple 平台编译；别的平台跟 CI 的 Linux job 一样排除它。
+# 空数组用 ${a[@]+"${a[@]}"} 展开：macOS 自带的 bash 3.2 在 set -u 下直接展开空数组会报未绑定
+exclude=()
+[[ "$(uname -s)" == Darwin ]] || exclude=(--exclude qingjian-macos)
+cargo clippy --workspace ${exclude[@]+"${exclude[@]}"} --all-targets -- -D warnings
