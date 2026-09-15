@@ -6,6 +6,7 @@
 
 mod row;
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk::prelude::*;
@@ -125,13 +126,23 @@ pub fn number(
 ///
 /// **失焦或回车时才写**：每敲一个字母就写一次盘的话，输入法那边每秒看 mtime，
 /// 会被半截的值反复热加载（接口地址敲到一半就是个坏地址）。
+/// 值没变就不写：点进框再点走、切页、关窗口都会失焦，回车之后还会再失焦一次，
+/// 不拦的话每次都原样写一遍，输入法跟着白热加载，外面刚改过的值也会被界面里的旧值盖回去。
 pub fn text(page: &gtk::Box, settings: &Rc<Settings>, spec: Row<'_>, current: &str) {
     let control = Entry::new();
     control.set_text(current);
     control.set_width_chars(24);
     let (section, key) = (spec.section, spec.key);
     let settings = Rc::clone(settings);
-    let commit = move |control: &Entry| settings.set(section, key, control.text().as_str());
+    let written = Rc::new(RefCell::new(current.to_owned()));
+    let commit = move |control: &Entry| {
+        let value = control.text();
+        if *written.borrow() == value.as_str() {
+            return;
+        }
+        settings.set(section, key, value.as_str());
+        *written.borrow_mut() = value.into();
+    };
     let on_blur = commit.clone();
     control.connect_has_focus_notify(move |control| {
         if !control.has_focus() {
