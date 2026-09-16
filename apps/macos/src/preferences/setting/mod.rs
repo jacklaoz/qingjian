@@ -116,6 +116,9 @@ pub enum Setting {
     /// `[general] shuangpin`，弹出菜单：关 + 四套方案。
     Shuangpin,
 
+    /// `[general] traditional`，弹出菜单：简体 + 三档繁体。
+    Traditional,
+
     /// `[general] log_level`，勾选框：勾上是 debug。
     VerboseLog,
 
@@ -193,6 +196,7 @@ impl Setting {
             Self::NewPhrase => 38,
             Self::EditPhrase => 39,
             Self::CancelPhraseEdit => 40,
+            Self::Traditional => 41,
             Self::Fuzzy(index) => FUZZY_TAG_BASE + index as NSInteger,
             Self::DictionaryEnabled(index) => DICTIONARY_ENABLED_TAG_BASE + index as NSInteger,
             Self::DictionaryRemove(index) => DICTIONARY_REMOVE_TAG_BASE + index as NSInteger,
@@ -241,6 +245,7 @@ impl Setting {
             38 => Self::NewPhrase,
             39 => Self::EditPhrase,
             40 => Self::CancelPhraseEdit,
+            41 => Self::Traditional,
             _ if tag >= DICTIONARY_REMOVE_TAG_BASE => {
                 let index = usize::try_from(tag - DICTIONARY_REMOVE_TAG_BASE).ok()?;
                 (index < MAX_DICTIONARIES).then_some(Self::DictionaryRemove(index))?
@@ -285,6 +290,7 @@ mod tests {
             Setting::ResetShortcuts,
             Setting::ImportDictionary,
             Setting::Shuangpin,
+            Setting::Traditional,
             Setting::VerboseLog,
             Setting::OpenLogDirectory,
             Setting::CopyDiagnostics,

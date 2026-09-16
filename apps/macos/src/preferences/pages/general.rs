@@ -3,7 +3,7 @@
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSButton, NSPopUpButton};
-use qingjian_core::{Language, ShuangpinScheme};
+use qingjian_core::{Language, ShuangpinScheme, TraditionalVariant};
 use qingjian_platform::{Config, MAX_PAGE_SIZE};
 
 use crate::preferences::controls::{
@@ -22,6 +22,9 @@ pub struct GeneralPage {
 
     /// 双拼方案（第 0 项是关）。
     shuangpin: Retained<NSPopUpButton>,
+
+    /// 输出字形（第 0 项是简体）。
+    traditional: Retained<NSPopUpButton>,
 
     /// 英文模式也给候选。
     english: Retained<NSButton>,
@@ -86,6 +89,23 @@ impl GeneralPage {
             mtm,
             "开双拼后 v、u、i 是音节键，表达式与问字模式只能用 ? 开头进；微软、搜狗方案的 ; 键是 ing。",
         );
+        let traditional_titles: Vec<String> = TraditionalVariant::ALL
+            .iter()
+            .map(|variant| variant.label().to_owned())
+            .collect();
+        let traditional = row_popup(
+            layout,
+            mtm,
+            "输出字形",
+            &traditional_titles,
+            Setting::Traditional,
+            target,
+        );
+        note(
+            layout,
+            mtm,
+            "台湾正体连用语一起换（软件 → 軟體、内存 → 記憶體）；词库与学习数据始终是简体，改回简体后学过的词照样在。",
+        );
         let punctuation = row_popup(
             layout,
             mtm,
@@ -127,6 +147,7 @@ impl GeneralPage {
             learning_language,
             page_size,
             shuangpin,
+            traditional,
             english,
             english_off_in_apps,
             languages: languages.to_vec(),
@@ -155,6 +176,12 @@ impl GeneralPage {
                     .position(|s| *s == scheme)
                     .map_or(0, |i| i + 1)
             })),
+        );
+        select(
+            &self.traditional,
+            TraditionalVariant::ALL
+                .iter()
+                .position(|variant| *variant == general.traditional),
         );
         set_checked(&self.english, general.english_candidates);
         set_checked(

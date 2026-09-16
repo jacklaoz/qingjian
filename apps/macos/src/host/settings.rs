@@ -337,6 +337,14 @@ impl Host {
                     .map_or("", |scheme| scheme.key());
                 self.settings.set_value("general", "shuangpin", key);
             }
+            // 弹出菜单按 TraditionalVariant::ALL 的顺序，第 0 项是简体
+            (Setting::Traditional, SettingValue::Index(index)) => {
+                let key = TraditionalVariant::ALL
+                    .get(index)
+                    .unwrap_or(&TraditionalVariant::Off)
+                    .key();
+                self.settings.set_value("general", "traditional", key);
+            }
             // 文本框失焦也会发 action：值没变就不写，免得每次切窗口都重写一遍配置
             (Setting::BaseUrl, SettingValue::Text(text)) => {
                 let text = text.trim();
