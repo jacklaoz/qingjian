@@ -166,7 +166,9 @@ postinst / postrm 调 `ibus write-cache --system` 让 ibus 重扫。
 
 ## 还没做的
 
-- **`.rpm`**：没有能验的环境，不写没跑过的打包脚本。
+- ~~**`.rpm`**~~：当天卡在「没有能验的环境」，2026-09-16 用 docker 解决了——构建与验证都在 fedora
+  容器里跑（`build-rpm.sh --verify` 会 `dnf install` 装上再 `--check`）。
+  rpm 的自动依赖比 deb 省事得多（自己扫 ELF），但它不分强弱符号，glibc 门槛因此比 deb 严一档。
 - **L3 / L4**：自绘要先把 `renderer-spike` 分支合进 main（那份代码不在这台机器上），
   而 L4 的 `input-method-v2` 只有 wlroots 系实现，GNOME / KDE 验不了。
 - ~~**设置界面**~~：当天之后补上了，GTK4 七页（`apps/linux/settings`）；也仍可直接编辑

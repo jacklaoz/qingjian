@@ -6,7 +6,7 @@ Linux 端是**一个产品、两个产物**，各自一个 package，同放本�
 | --- | --- | --- | --- |
 | `ime/` | `qingjian-linux` | `qingjian-linux` | 输入法本体：走 IBus 接上 `qingjian-core::Engine`，把候选交给 IBus 面板画 |
 | `settings/` | `qingjian-linux-settings` | `qingjian-settings` | GTK4 设置界面：左侧导航 + 各分节表单，读写 `~/.config/qingjian/config.toml` |
-| `packaging/` | — | 四个 `.deb`、一个 Flatpak | `build-deb.sh`（程序 / 设置界面 / 数据 / 模型）、`build-flatpak.sh` |
+| `packaging/` | — | 四个 `.deb`、四个 `.rpm`、一个 Flatpak | `build-deb.sh` / `build-rpm.sh`（各出程序 / 设置界面 / 数据 / 模型四个包）、`build-flatpak.sh` |
 
 接入方案（IBus 而不是 Fcitx5 或原生 `input-method-v2`）与分期见 [`docs/plan/linux_plan.md`](../../docs/plan/linux_plan.md)，
 搭起来时踩的坑与验收数字在 [`docs/notes/linux-bringup.md`](../../docs/notes/linux-bringup.md)。
@@ -113,6 +113,26 @@ ibus restart                               # 或注销重登，否则输入源�
 - **候选窗与拼音行是 IBus 面板画的**，字体配色跟着桌面走；`[general]` 里的 `layout` / `theme` 在这条路上不生效（自绘是 L4 的事，只做 wlroots）。
 
 用户视角的安装、桌面差异与排查在 [`docs/user/getting-started/install.md`](../../docs/user/getting-started/install.md)。
+
+## RPM
+
+```bash
+apps/linux/packaging/build-rpm.sh --verify      # 产物在 target/rpm/RPMS/
+```
+
+本机（Ubuntu）没有 rpmbuild，所以**构建跑在 fedora 容器里**：宿主机先 `cargo build --release`，
+容器里只做打包。`--verify` 会在同一个容器里 `dnf install` 装上再跑一次 `--check`，
+所以这份 spec 不是纸面产物（2026-09-16 在 fedora:latest / fc44 上验过：四个包都装得上，
+随包数据解析到 `/usr/share/qingjian`，模型找得到）。
+
+比 `.deb` 省事的一处：**依赖不用自己算**。rpmbuild 会扫 ELF 的 NEEDED 生成
+`libssl.so.3()(64bit)`、`libc.so.6(GLIBC_2.34)(64bit)` 这些，
+deb 那边得手写 `library_depends` + `glibc_requirement` 才做到同一件事。
+
+有一处两边不一致，知道就好：**rpm 的 glibc 门槛比 deb 严一档**（2.39 对 2.34）。
+`pidfd_spawnp` 这类 Rust 标准库的弱引用，deb 那边算依赖时排除了，rpm 的自动依赖不分强弱，
+试过 `%global __requires_exclude` 的覆盖与追加两种写法，在 fc44 的依赖生成器上都没生效。
+代价只是 RHEL 9 与已 EOL 的 Fedora 39 装不上，Fedora 40+ 与 openSUSE Tumbleweed 都没问题。
 
 ## Flatpak
 

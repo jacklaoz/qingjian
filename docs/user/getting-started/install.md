@@ -76,9 +76,21 @@ description: macOS、Windows 与 Linux 的安装步骤：系统要求、安装�
 - **KDE Plasma**：部分发行版默认使用另一套输入法框架 Fcitx5。若输入源列表中找不到青简，到「系统设置 → 键盘 → 虚拟键盘」中选择 IBus，注销后重新登录。
 - **X11 会话**：需安装 `ibus-gtk3`、`ibus-gtk4`（按上述命令安装时会一并装上），并执行 `im-config -n ibus` 后重新登录，否则部分程序中无法输入。Wayland 会话不需要这一步。
 - **基于 Electron 的程序**（Visual Studio Code、Chrome 等）：在 Wayland 会话中需以 `--enable-wayland-ime` 参数启动，否则拼音不在光标处显示。
-- **其他发行版**（Fedora、Arch、openSUSE 等）：使用下方的 Flatpak 包，或自行构建，步骤见项目仓库。
+- **其他发行版**：Fedora 与 openSUSE 用下方的 `.rpm`；Arch 等其他发行版用 Flatpak 包，或自行构建（步骤见项目仓库）。
 
 若安装后打不出字，在终端执行 `qingjian-linux --check`，它会逐项列出所需文件的位置与缺失情况。
+
+### Fedora / openSUSE：RPM
+
+与 `.deb` 相同的四个包，安装方式：
+
+```bash
+sudo dnf install ./qingjian-*.rpm
+ibus restart
+```
+
+随后在「设置 → 键盘 → 输入源」中加入「青简」。需要 Fedora 40 或更新的版本（openSUSE 用 Tumbleweed）。
+其余与上文 Debian / Ubuntu 一节相同，包括桌面环境的差异。
 
 ### 其他发行版：Flatpak
 
