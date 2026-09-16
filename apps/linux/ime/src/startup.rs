@@ -22,6 +22,7 @@ pub fn build() -> Result<(Router, PathBuf), ShellError> {
         tracing::error!(%error, "配置读不了，用缺省值");
         Config::default()
     });
+    load_env(&config_path);
     let root = qingjian_platform::resources::bundled_root().unwrap_or_else(|| PathBuf::from("."));
     let engine = assemble(&config, &root)?;
     let mut router = Router::new(engine, RouterConfig::from(&config));
@@ -29,7 +30,18 @@ pub fn build() -> Result<(Router, PathBuf), ShellError> {
     // 加载在后台线程，这里只是记下路径并按 `[model] enabled` 起头。
     let model_path = dispatch::find_model(paths::data_dir().ok().as_deref(), &root);
     router.configure_local_model(model_path, &config.model);
+    // 云联想与释义兜底：关着或缺密钥就退回本地候选，不影响启动
+    router.configure_cloud(&config.predict);
     Ok((router, config_path))
+}
+
+/// 读云服务密钥：工作目录的 `.env`，再叠加配置目录（`~/.config/qingjian/.env`，设置界面填的密钥写在那里）。
+/// 两处都只补缺，不覆盖已经设好的环境变量。
+fn load_env(config_path: &Path) {
+    let _ = dotenvy::dotenv();
+    if let Some(dir) = config_path.parent() {
+        let _ = dotenvy::from_path(dir.join(".env"));
+    }
 }
 
 /// 按配置与随包数据装一个 Engine。词库装不起来就回落样例词库，样例也不行才报错。

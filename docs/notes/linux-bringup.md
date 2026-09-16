@@ -141,6 +141,12 @@ postinst / postrm 调 `ibus write-cache --system` 让 ibus 重扫。
   现在引擎对象拿到焦点时把自己的对象路径记进 `ibus/active.rs`，主循环照着它
   `SignalEmitter::from_parts` 造一个再发。tick 也改成只有帧真变了才回，空转的一秒不往 D-Bus 上发信号。
 
+- **云联想**：与本地模型同一个毛病——`assembly` 从没调过 `with_predictor`，`[predict]` 读进来只在 `--check` 里打印一行。
+  接法照 Windows 的 `attach_cloud`（第三份）。`CloudPredictor` 自己起工人线程、线程里自建 current-thread 运行时，
+  所以不占主循环那个多线程运行时，也不需要壳这边配合。
+  **Linux 特有的一处**：密钥不能指望环境变量——引擎进程是 ibus-daemon 拉起来的，用户在终端 export 的东西它看不到，
+  所以启动时用 dotenvy 读一遍 `~/.config/qingjian/.env`（设置界面写密钥也写在那里）。
+
 ## 还没做的
 
 - **`.rpm`**：没有能验的环境，不写没跑过的打包脚本。

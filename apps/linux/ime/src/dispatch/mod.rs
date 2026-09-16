@@ -2,11 +2,13 @@
 //!
 //! 这一层**不认 IBus 也不认 Wayland**：进来的是 [`KeyInput`]，出去的是 [`KeyResponse`]，
 //! 所以两条接入路线共用它，也能脱离输入法框架整段测试（`tests/` 就是这么测的）。
-//! 组句展示状态在 [`composed`]，按键规则在 [`key`]，配置项在 [`config`]，本地整句模型在 [`rescore`]。
+//! 组句展示状态在 [`composed`]，按键规则在 [`key`]，配置项在 [`config`]，
+//! 本地整句模型在 [`rescore`]，云联想在 [`cloud`]。
 //!
 //! 与 Windows Server 的 `dispatch` 相比少了会话分派：IBus 一个引擎实例服务当前焦点，
 //! 没有「一个 Server 服务多个应用进程」那回事。
 
+mod cloud;
 mod composed;
 mod config;
 mod key;
@@ -22,6 +24,7 @@ use std::time::{Duration, Instant};
 use qingjian_core::Engine;
 use qingjian_platform::LocalModelConfig;
 use qingjian_platform::protocol::{Frame, KeyOutcome};
+use qingjian_predict::PredictConfig;
 
 use self::composed::Composed;
 pub use self::config::RouterConfig;
@@ -75,6 +78,9 @@ pub struct Router {
 
     /// 重排的防抖 / 轮询进行态。
     rescore: RescoreState,
+
+    /// 上次套用的 `[predict]`，变了才重建云联想。
+    applied_predict: PredictConfig,
 }
 
 impl Router {
@@ -95,6 +101,7 @@ impl Router {
             model_loader: None,
             applied_model: LocalModelConfig::default(),
             rescore: RescoreState::default(),
+            applied_predict: PredictConfig::default(),
         };
         router.apply_config();
         router

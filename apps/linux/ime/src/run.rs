@@ -108,8 +108,10 @@ impl ConfigWatcher {
                 tracing::info!(path = %self.path.display(), "配置变了，热加载");
                 let mut router = router.lock();
                 router.set_config(RouterConfig::from(&config));
-                // `[model]` 不在 RouterConfig 里（它管的是加载 / 卸载模型，不是一条显示设置）
+                // `[model]` 与 `[predict]` 不在 RouterConfig 里：它们管的是加载 / 卸载模型、
+                // 重建云联想的连接，不是一条显示设置
                 router.apply_model_config(&config.model);
+                router.apply_predict_config(&config.predict);
             }
             // 解析失败沿用上一份：用户正在编辑保存到一半也不能把输入法弄瘫
             Err(error) => tracing::error!(%error, "配置读不了，沿用上一份"),

@@ -147,20 +147,28 @@ fn report_config() {
 fn print_settings(config: &Config) {
     println!("  ✓ 学习语言      {}", config.general.learning_language);
     println!("  ✓ 每页候选      {}", config.general.page_size);
-    println!(
-        "  ✓ 云联想        {}",
-        if config.predict.enabled {
-            "开"
-        } else {
-            "关（缺省）"
-        }
-    );
+    println!("  ✓ 云联想        {}", cloud_state(&config.predict));
     println!(
         "  ✓ 本地整句模型  {}",
         if config.model.enabled { "开" } else { "关" }
     );
     if config.apps.has_english_candidates_off() {
         println!("  · [apps] 名单在 Linux 上不会生效：Wayland 拿不到前台应用标识");
+    }
+}
+
+/// 云联想开没开、密钥找没找到。开着但没密钥时壳会退回本地候选，而且只在日志里说一句——
+/// 这里是用户唯一一眼能看出来的地方。
+fn cloud_state(predict: &qingjian_predict::PredictConfig) -> String {
+    if !predict.enabled {
+        return "关（缺省）".to_owned();
+    }
+    match predict.resolve_api_key() {
+        Some(_) => format!("开，模型 {}", predict.model),
+        None => format!(
+            "开，但没有密钥（填进配置的 api_key，或设环境变量 {}），会退回本地候选",
+            predict.api_key_env
+        ),
     }
 }
 

@@ -108,6 +108,8 @@ ibus restart                               # 或注销重登，否则输入源�
 
 - 输入法本体 `/usr/bin/qingjian-linux`，随包数据 `/usr/share/qingjian/{data,assets}`，组件 XML `/usr/share/ibus/component/qingjian.xml`。
 - 配置 `~/.config/qingjian/config.toml`（改了即时生效，主循环每秒看一次 mtime），用户数据 `~/.local/share/qingjian/`，日志 `~/.local/state/qingjian/`。
+- **云服务密钥读 `~/.config/qingjian/.env`**（`QINGJIAN_API_KEY=<密钥>` 一行）或配置里的 `[predict] api_key`。
+  引擎进程是 ibus-daemon 拉起来的，**终端里 export 的变量它看不到**；开发时起私有 daemon 那条命令上带的环境变量它倒是继承得到。
 - **候选窗与拼音行是 IBus 面板画的**，字体配色跟着桌面走；`[general]` 里的 `layout` / `theme` 在这条路上不生效（自绘是 L4 的事，只做 wlroots）。
 
 用户视角的安装、桌面差异与排查在 [`docs/user/getting-started/install.md`](../../docs/user/getting-started/install.md)。

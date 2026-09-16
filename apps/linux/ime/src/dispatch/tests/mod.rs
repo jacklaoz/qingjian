@@ -2,6 +2,7 @@
 //! 用仓库自带的样例词库，所以在没有产品数据的机器上（CI）也跑得了。
 
 mod chinese;
+mod cloud;
 mod english;
 mod function;
 mod rescore;
