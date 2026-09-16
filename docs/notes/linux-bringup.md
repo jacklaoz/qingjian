@@ -123,10 +123,16 @@ IBUS-CRITICAL: bus_engine_proxy_g_signal: assertion 'arg0 != NULL' failed
 装到 `/usr/bin/qingjian-linux` + `/usr/share/qingjian/{data,assets}`，组件 XML 落 `/usr/share/ibus/component/`，
 postinst / postrm 调 `ibus write-cache --system` 让 ibus 重扫。
 
-**依赖是手写的，所以 libc6 那条自己算。** 没走 `dh_shlibdeps`，漏了它的后果不是装不上而是
-**装得上、跑不起来**：dpkg 放行，启动才报 `GLIBC_2.xx not found`。脚本现在从二进制的动态符号里取
-最高的强符号版本（`pidfd_spawnp` 这类 Rust 标准库的弱引用不算），当前算出来是 2.34，
-也就是 Ubuntu 22.04 / Debian 12 / RHEL 9 起。
+**依赖没走 `dh_shlibdeps`，所以两头都自己算。** 漏了它们的后果不是装不上而是
+**装得上、跑不起来**：dpkg 放行，启动才报错。
+
+- `libc6`：取二进制里最高的强符号版本（`pidfd_spawnp` 这类 Rust 标准库的弱引用不算），当前是 2.34，
+  也就是 Ubuntu 22.04 / Debian 12 / RHEL 9 起。
+- **动态库**：`readelf` 取 NEEDED、`ldd` 找路径、`dpkg -S` 问包名。
+  一定要现查而不能手写——接上云联想之后 `libssl` / `libcrypto` 就进了 NEEDED（reqwest 带的 OpenSSL），
+  手写的那份不会自己跟上。包名还有 Debian time_t 转换那一层（`libssl3t64` vs `libssl3`），
+  所以 `*t64` 的自动写成「或」依赖，两边发行版都装得上。
+
 `qingjian-data` 进 Recommends 同理：缺了它只有几十条样例词库，症状又是「装好了打不出字」。
 
 ## 后来补上的

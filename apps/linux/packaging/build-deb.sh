@@ -7,7 +7,8 @@
 # 设置界面单独一个包是因为它是**这一套里唯一要 GTK4 的东西**：输入法本体只链 libc，
 # 合在一起会让 KDE / Qt 环境装个输入法就拖进整棵 GTK 树。
 #
-# 依赖声明是手写的（没走 dh_shlibdeps），所以 libc6 那条自己按二进制里的符号算，见 glibc_requirement。
+# 依赖声明没走 dh_shlibdeps，所以自己算：libc6 那条按符号版本（glibc_requirement），
+# 动态库那几条按 NEEDED + dpkg -S（library_depends）。漏了它们不是装不上，而是装得上、跑不起来。
 #
 # 用法：apps/linux/packaging/build-deb.sh [--skip-data] [--skip-model]
 # 产物在 target/deb/。
@@ -49,6 +50,36 @@ glibc_requirement() {
         | sort -V | tail -1)"
     # readelf 不在或者符号表读不出来时别瞎猜，给一个这份代码肯定要的下限
     echo "${found:-2.34}"
+}
+
+# 二进制动态链接的库属于哪些包。
+#
+# 同样是 dh_shlibdeps 本该替我们做的事：readelf 取 NEEDED、ldd 找到实际路径、dpkg -S 问包名。
+# 自动推导而不是手写，是因为**依赖会跟着代码变**：云联想接上之后 libssl / libcrypto 就进了 NEEDED，
+# 手写的那份不会自己跟上，而漏了照样是「装得上、跑不起来」。
+# libc / libm / libgcc / 动态链接器不在这里报，上面的 libc6 那条已经覆盖。
+library_depends() {
+    local bin="$1" soname path pkg
+    local found=()
+    while read -r soname; do
+        case "$soname" in
+            libc.so.*|libm.so.*|libgcc_s.so.*|ld-linux-*) continue ;;
+        esac
+        path="$(ldd "$bin" | awk -v want="$soname" '$1 == want { print $3 }')"
+        [ -z "$path" ] && continue
+        pkg="$(dpkg -S "$(readlink -f "$path")" 2>/dev/null | head -1 | cut -d: -f1)"
+        [ -z "$pkg" ] && continue
+        # Debian 的 time_t 转换给包名加了 t64 后缀（libssl3t64），转换之前的发行版上还叫老名字。
+        # 写成「或」依赖，两边都装得上。
+        case "$pkg" in
+            *t64) found+=("$pkg | ${pkg%t64}") ;;
+            *) found+=("$pkg") ;;
+        esac
+    done < <(LC_ALL=C readelf -d "$bin" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')
+    [ ${#found[@]} -eq 0 ] && return
+    # `paste -sd', '` 是错的：-d 收的是**字符列表**，逗号与空格会轮流当分隔符，
+    # 三项以上就会拼出 `a,b c` 这种 dpkg 不认的东西。一个字符连起来，再补空格。
+    printf '%s\n' "${found[@]}" | awk '!seen[$0]++' | paste -sd, | sed 's/,/, /g'
 }
 
 # 写一个包的 control 文件。
@@ -106,12 +137,13 @@ if command -v ibus >/dev/null 2>&1; then
 fi
 HOOK
 chmod 755 "$ROOT/DEBIAN/postinst" "$ROOT/DEBIAN/postrm"
-# 输入法本体只链 libc / libm / libgcc：IBus 走的是 D-Bus（纯 Rust 的 zbus），没有 libibus。
+# 输入法本体不链 libibus（IBus 走的是 D-Bus，纯 Rust 的 zbus），但云联想经 reqwest 带进了 OpenSSL，
+# 所以 NEEDED 里有 libssl / libcrypto——具体依赖哪个包由 library_depends 现查，不写死。
 # ibus-gtk3 / ibus-gtk4 是 X11 会话里 GTK 应用接 ibus 要的（Wayland 走 text-input 协议，用不着）；
 # Qt 的 ibus 插件随 libqt5gui5 / libqt6gui6 一起装，不用在这里点名。
 # 没有中文字体的话候选窗（IBus 面板画的）是一排豆腐，所以也推荐上。
 write_control qingjian \
-    "ibus (>= 1.5), libc6 (>= $(glibc_requirement "target/release/$BIN_NAME"))" \
+    "ibus (>= 1.5), libc6 (>= $(glibc_requirement "target/release/$BIN_NAME")), $(library_depends "target/release/$BIN_NAME")" \
     "qingjian-data, qingjian-settings, ibus-gtk3, ibus-gtk4, fonts-noto-cjk" \
     "青简输入法" \
     "输入的不只是文字：候选旁附一条目标语言译词。词库与语言模型在 qingjian-data，本地整句模型在 qingjian-model，两者都可不装（缺了各少一个功能）。" \
@@ -139,7 +171,7 @@ Categories=Settings;
 Keywords=qingjian;input method;输入法;青简;
 DESKTOP
 write_control qingjian-settings \
-    "qingjian (= $DEB_VERSION), libgtk-4-1, libc6 (>= $(glibc_requirement "target/release/$SETTINGS_BIN"))" \
+    "qingjian (= $DEB_VERSION), libc6 (>= $(glibc_requirement "target/release/$SETTINGS_BIN")), $(library_depends "target/release/$SETTINGS_BIN")" \
     "" \
     "青简输入法的设置界面" \
     "左侧导航加各分节表单，读写 ~/.config/qingjian/config.toml，改完即时生效。单独一个包是因为它要 GTK4，而输入法本体不要。" \
