@@ -42,6 +42,9 @@ impl Component for Settings {
                 self.save("general", "shuangpin", general::SHUANGPIN[i].1);
             }
             Message::Zhuyin(on) => self.save("general", "zhuyin", on),
+            Message::Traditional(Some(i)) if i < general::TRADITIONAL.len() => {
+                self.save("general", "traditional", general::TRADITIONAL[i].1);
+            }
             Message::EnglishCandidates(on) => self.save("general", "english_candidates", on),
             Message::FullWidthPunctuation(on) => {
                 self.save("general", "full_width_punctuation", on);

@@ -11,6 +11,7 @@ pub(crate) enum Message {
     PageSize(Option<f64>),
     Shuangpin(Option<usize>),
     Zhuyin(bool),
+    Traditional(Option<usize>),
     EnglishCandidates(bool),
     FullWidthPunctuation(bool),
     EnglishFullWidthPunctuation(bool),
