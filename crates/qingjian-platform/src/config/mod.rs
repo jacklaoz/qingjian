@@ -205,6 +205,9 @@ english_full_width_punctuation = false
 # 双拼方案：留空为全拼；xiaohe 小鹤 / ziranma 自然码 / microsoft 微软 / sogou 搜狗
 # 开着时 v / u / i 都是音节键，表达式与问字模式只能用 ? 开头进；微软、搜狗方案的 ; 键是 ing
 shuangpin = ""
+# 繁体输出：off 简体 / taiwan 台湾正体（连用语一起换，软件 → 軟體、内存 → 記憶體）/ hongkong 香港繁体 / standard 通用繁体（只换字形）
+# 候选窗口里看到的就是转换后的字；词库与学习数据始终是简体，改回 off 之前学到的词照样在
+traditional = "off"
 # 日志级别：info 缺省 / debug 详细（会记录敲的拼音与上屏的文字，配合作者排查问题时再开）。日志在 ~/Library/Logs/Qingjian/
 log_level = "info"
 # 输入日志：每次上屏记一行到数据目录的 input-log.jsonl（敲的键、看到的候选、选了什么），只写在这台电脑上，不上传；

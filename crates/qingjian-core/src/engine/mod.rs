@@ -69,6 +69,7 @@ use crate::sentence::{
 };
 use crate::shortcut;
 use crate::shuangpin::Scheme;
+use crate::traditional::{Traditional, TraditionalVariant};
 
 use commit::CommitChain;
 
@@ -231,6 +232,9 @@ pub struct Engine {
 
     /// emoji 表，没有就不出 emoji 候选。
     emoji: Option<EmojiTable>,
+
+    /// 繁体输出：候选出 Core 时换成繁体、上屏时换回简体，缺省不转（见 [`crate::traditional`]）。
+    traditional: Traditional,
 }
 
 /// 英文补全最多几条（`compa` → company / compare / …）。
@@ -358,6 +362,7 @@ impl Engine {
             shuangpin: None,
             zhuyin: false,
             emoji: None,
+            traditional: Traditional::default(),
         }
     }
 }

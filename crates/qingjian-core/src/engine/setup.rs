@@ -37,6 +37,19 @@ impl Engine {
         self.zhuyin
     }
 
+    /// 设繁体输出：候选与上屏文本在出 Core 时换成繁体，词库与学习数据仍是简体（见 [`crate::traditional`]）。
+    /// 变体没变就不重建，建一次要把 OpenCC 的字典装起来。
+    pub fn set_traditional(&mut self, variant: TraditionalVariant) {
+        if variant != self.traditional.variant() {
+            self.traditional = Traditional::new(variant);
+        }
+    }
+
+    /// 当前的繁体输出变体。
+    pub fn traditional(&self) -> TraditionalVariant {
+        self.traditional.variant()
+    }
+
     /// 判斷注音模式下目前是否還需要輸入聲調。
     /// 供殼（平台層）用來判斷空白鍵是應該進緩衝區作為聲調，還是直接用來選詞。
     pub fn zhuyin_needs_tone(&self) -> bool {

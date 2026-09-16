@@ -1,4 +1,4 @@
-use qingjian_core::ShuangpinScheme;
+use qingjian_core::{ShuangpinScheme, TraditionalVariant};
 use serde::{Deserialize, Serialize};
 
 use super::{LayoutMode, LogLevel, PreeditMode, ThemeMode};
@@ -52,6 +52,10 @@ pub struct GeneralConfig {
     /// 注音模式开关，大千键盘。
     pub zhuyin: bool,
 
+    /// 繁体输出：候选与上屏文本转成哪一地的繁体，缺省不转。
+    /// 词库与学习数据始终是简体，只在出 Core 时换（见 [`TraditionalVariant`]）。
+    pub traditional: TraditionalVariant,
+
     /// 日志级别，缺省 info（不含用户敲的内容）。
     pub log_level: LogLevel,
 
@@ -74,6 +78,7 @@ impl Default for GeneralConfig {
             english_full_width_punctuation: false,
             shuangpin: String::new(),
             zhuyin: false,
+            traditional: TraditionalVariant::default(),
             log_level: LogLevel::default(),
             input_log: true,
         }

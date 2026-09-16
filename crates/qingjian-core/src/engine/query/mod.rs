@@ -56,6 +56,9 @@ impl Engine {
                 .collect(),
             rescored: self.last_rescored.get(),
         });
+        // 繁体输出：出 Core 的最后一步才换，并记下「繁体 → 简体」给上屏还原用。
+        // 放在输入日志摘要之后，日志与学习数据一律记简体
+        self.traditional.apply(&mut query.candidates);
         Ok(query)
     }
 

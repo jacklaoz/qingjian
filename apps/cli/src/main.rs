@@ -248,6 +248,7 @@ fn build_engine(args: &Args) -> Result<Engine, CliError> {
     }
     engine.set_shuangpin(config.general.shuangpin());
     engine.set_zhuyin_mode(config.general.zhuyin);
+    engine.set_traditional(config.general.traditional);
     if config.predict.enabled {
         let predictor = CloudPredictor::new(&config.predict)?;
         engine = engine.with_predictor(Box::new(predictor));
