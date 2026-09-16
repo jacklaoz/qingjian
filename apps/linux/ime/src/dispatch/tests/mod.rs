@@ -4,6 +4,7 @@
 mod chinese;
 mod english;
 mod function;
+mod rescore;
 mod shortcut;
 
 use std::path::PathBuf;

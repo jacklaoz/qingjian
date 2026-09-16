@@ -8,7 +8,7 @@ use qingjian_core::{Engine, Language};
 use qingjian_platform::Config;
 
 use crate::assembly::{self, AssemblySpec, LanguageModelFiles};
-use crate::dispatch::{Router, RouterConfig};
+use crate::dispatch::{self, Router, RouterConfig};
 use crate::error::ShellError;
 use crate::paths;
 
@@ -22,23 +22,27 @@ pub fn build() -> Result<(Router, PathBuf), ShellError> {
         tracing::error!(%error, "配置读不了，用缺省值");
         Config::default()
     });
-    let engine = assemble(&config)?;
-    let router = Router::new(engine, RouterConfig::from(&config));
+    let root = qingjian_platform::resources::bundled_root().unwrap_or_else(|| PathBuf::from("."));
+    let engine = assemble(&config, &root)?;
+    let mut router = Router::new(engine, RouterConfig::from(&config));
+    // 本地整句模型：用户目录 `model/` 的优先，否则随包的（发行版包装在 `/usr/share/qingjian/data/model/`）。
+    // 加载在后台线程，这里只是记下路径并按 `[model] enabled` 起头。
+    let model_path = dispatch::find_model(paths::data_dir().ok().as_deref(), &root);
+    router.configure_local_model(model_path, &config.model);
     Ok((router, config_path))
 }
 
 /// 按配置与随包数据装一个 Engine。词库装不起来就回落样例词库，样例也不行才报错。
-fn assemble(config: &Config) -> Result<Engine, ShellError> {
-    let root = qingjian_platform::resources::bundled_root().unwrap_or_else(|| PathBuf::from("."));
+fn assemble(config: &Config, root: &Path) -> Result<Engine, ShellError> {
     let language = learning_language(config);
     let user_dir = paths::data_dir().ok();
     let spec = AssemblySpec {
-        glossary: glossary_file(&root, language).map(|path| (language, path)),
-        english_glossary: glossary_file(&root, Language::Chinese),
-        english: generated(&root, "english.tsv"),
+        glossary: glossary_file(root, language).map(|path| (language, path)),
+        english_glossary: glossary_file(root, Language::Chinese),
+        english: generated(root, "english.tsv"),
         emoji: ["emoji-zh.tsv", "emoji-en.tsv"]
             .into_iter()
-            .filter_map(|name| asset(&root, &format!("emoji/{name}")))
+            .filter_map(|name| asset(root, &format!("emoji/{name}")))
             .collect(),
         language_model: LanguageModelFiles::find(&root.join("data/generated")),
         bundled_dicts_dir: Some(root.join("data/generated/dicts")).filter(|dir| dir.is_dir()),
@@ -46,14 +50,14 @@ fn assemble(config: &Config) -> Result<Engine, ShellError> {
         levels_dir: Some(root.join("assets/levels")),
         user_dir,
         input_log: config.general.input_log,
-        ..AssemblySpec::new(default_dict(&root))
+        ..AssemblySpec::new(default_dict(root))
     };
     let mut spec = spec;
     match assembly::assemble(&spec) {
         Ok(engine) => Ok(engine),
         Err(error) => {
             tracing::error!(%error, dict = %spec.dict.display(), "正式词库装配失败，回落样例词库");
-            spec.dict = sample_dict(&root);
+            spec.dict = sample_dict(root);
             assembly::assemble(&spec)
         }
     }

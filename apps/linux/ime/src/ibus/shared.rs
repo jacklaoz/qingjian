@@ -12,19 +12,36 @@
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use tokio::sync::Notify;
+
 use crate::dispatch::Router;
 
 /// 共用的 Router 句柄。
 #[derive(Clone)]
 pub struct Shared {
+    /// 进程内唯一的 Router。
     router: Arc<Mutex<Router>>,
+
+    /// 叫醒主循环重算节拍。停键 80 毫秒就要请求重排，等不到闲着时那一秒的节拍。
+    wake: Arc<Notify>,
 }
 
 impl Shared {
     pub fn new(router: Router) -> Self {
         Self {
             router: Arc::new(Mutex::new(router)),
+            wake: Arc::new(Notify::new()),
         }
+    }
+
+    /// 按键处理完了：叫主循环重算下一次节拍。
+    pub fn wake_ticker(&self) {
+        self.wake.notify_one();
+    }
+
+    /// 等一次叫醒（主循环用）。
+    pub async fn woken(&self) {
+        self.wake.notified().await;
     }
 
     /// 拿锁。被毒化过就把里面的数据取回来接着用，不把整个输入法拖死。

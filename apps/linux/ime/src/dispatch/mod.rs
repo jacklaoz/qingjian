@@ -2,7 +2,7 @@
 //!
 //! 这一层**不认 IBus 也不认 Wayland**：进来的是 [`KeyInput`]，出去的是 [`KeyResponse`]，
 //! 所以两条接入路线共用它，也能脱离输入法框架整段测试（`tests/` 就是这么测的）。
-//! 组句展示状态在 [`composed`]，按键规则在 [`key`]，配置项在 [`config`]。
+//! 组句展示状态在 [`composed`]，按键规则在 [`key`]，配置项在 [`config`]，本地整句模型在 [`rescore`]。
 //!
 //! 与 Windows Server 的 `dispatch` 相比少了会话分派：IBus 一个引擎实例服务当前焦点，
 //! 没有「一个 Server 服务多个应用进程」那回事。
@@ -10,24 +10,33 @@
 mod composed;
 mod config;
 mod key;
+mod rescore;
 mod response;
 
 #[cfg(test)]
 mod tests;
 
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use qingjian_core::Engine;
+use qingjian_platform::LocalModelConfig;
 use qingjian_platform::protocol::{Frame, KeyOutcome};
 
 use self::composed::Composed;
 pub use self::config::RouterConfig;
 use self::key::Effect;
+pub use self::rescore::find_model;
+use self::rescore::{ModelLoader, RescoreState};
 pub use self::response::KeyResponse;
 use crate::keys::KeyInput;
 
 /// 学习数据落盘间隔（与 macOS / Windows 壳一致）。
 const LEARNING_FLUSH_INTERVAL: Duration = Duration::from_secs(60);
+
+/// 闲着时的节拍：配置文件轮询与学习数据落盘靠它，与 macOS 壳的定时器一致（那边也是每秒看一次 mtime）。
+/// 等重排时节拍会短得多，见 [`Router::next_tick`]。
+pub const IDLE_TICK: Duration = Duration::from_secs(1);
 
 /// 按键 → Engine → 帧。一个 Engine 持当前组句。
 pub struct Router {
@@ -54,6 +63,18 @@ pub struct Router {
 
     /// 上次把学习数据落盘的时间。
     last_flush: Instant,
+
+    /// 本地整句模型（`.qjm` 或三件套目录）；没有模型文件为 `None`。
+    model_path: Option<PathBuf>,
+
+    /// 进行中的模型加载；加载完接到 Engine 上就清掉。
+    model_loader: Option<ModelLoader>,
+
+    /// 上次套用的 `[model]`，变了才重载 / 卸载。
+    applied_model: LocalModelConfig,
+
+    /// 重排的防抖 / 轮询进行态。
+    rescore: RescoreState,
 }
 
 impl Router {
@@ -70,6 +91,10 @@ impl Router {
             highlight: 0,
             navigated: false,
             last_flush: Instant::now(),
+            model_path: None,
+            model_loader: None,
+            applied_model: LocalModelConfig::default(),
+            rescore: RescoreState::default(),
         };
         router.apply_config();
         router
@@ -86,7 +111,7 @@ impl Router {
             Effect::Navigated => (None, KeyOutcome::Consumed),
             Effect::Passthrough => (None, KeyOutcome::Passthrough),
         };
-        self.poll_prediction();
+        let _ = self.poll_prediction();
         self.maybe_flush();
         KeyResponse {
             outcome,
@@ -95,15 +120,20 @@ impl Router {
         }
     }
 
-    /// 定时节拍：拉一次云联想与释义兜底的异步结果，回最新一帧。
-    pub fn tick(&mut self) -> Frame {
+    /// 定时节拍：接上加载好的模型、推进重排、拉一次云联想与释义兜底的异步结果。
+    ///
+    /// **只在这一帧真的变了时才回帧**：主循环据此决定要不要重画面板，
+    /// 空转的节拍（每秒一次）不该往 D-Bus 上发信号。
+    pub fn tick(&mut self) -> Option<Frame> {
         let learned = self.engine.poll_glosses();
         if learned > 0 {
             tracing::info!(learned, "释义兜底写入个人释义表");
         }
-        self.poll_prediction();
+        self.attach_loaded_model();
+        let mut changed = self.advance_rescoring();
+        changed |= self.poll_prediction();
         self.maybe_flush();
-        self.current_frame()
+        changed.then(|| self.current_frame())
     }
 
     /// 焦点离开 / 应用要求结束组句：缓冲原样交出并清空。没在组句时为 `None`。

@@ -63,6 +63,47 @@ const KEY_H: u32 = 43;
 const KEY_A: u32 = 38;
 const KEY_O: u32 = 32;
 const KEY_SPACE: u32 = 65;
+const KEY_ESCAPE: u32 = 9;
+
+/// Esc 的 keysym。
+const KEYSYM_ESCAPE: u32 = 0xff1b;
+
+/// US 布局下 26 个字母的硬件键码（同上，evdev + 8）。键码要给对：
+/// 删候选的 Shift + 数字就是按**键位**认的，光看 keysym 认不出来。
+fn keycode(c: char) -> u32 {
+    const CODES: [(char, u32); 26] = [
+        ('a', 38),
+        ('b', 56),
+        ('c', 54),
+        ('d', 40),
+        ('e', 26),
+        ('f', 41),
+        ('g', 42),
+        ('h', 43),
+        ('i', 31),
+        ('j', 44),
+        ('k', 45),
+        ('l', 46),
+        ('m', 58),
+        ('n', 57),
+        ('o', 32),
+        ('p', 33),
+        ('q', 24),
+        ('r', 27),
+        ('s', 39),
+        ('t', 28),
+        ('u', 30),
+        ('v', 55),
+        ('w', 25),
+        ('x', 53),
+        ('y', 29),
+        ('z', 52),
+    ];
+    CODES
+        .iter()
+        .find_map(|(letter, code)| (*letter == c).then_some(*code))
+        .unwrap_or_else(|| panic!("没有 {c} 的键码"))
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn typing_pinyin_reaches_the_panel_and_commits() {
@@ -163,6 +204,100 @@ async fn typing_pinyin_reaches_the_panel_and_commits() {
         .unwrap_or_else(|| panic!("上屏的该是 你好；收到的是 {}", collected.summary()));
 }
 
+/// 停手之后主循环还会再推一帧：本地整句模型重排完，候选表要自己更新一次。
+///
+/// 验的是**按键之外的重画**这条通路——按键路径上的信号发出者由 zbus 交在方法参数里，
+/// 主循环手上没有，得照 `ibus/active.rs` 记下的聚焦对象路径自己造一个（`run.rs` 的 `present`）。
+/// 这条路没有别的办法验：单元测试只看得到 `tick()` 回没回帧，回了之后发没发出去得看真 daemon。
+///
+/// 默认不跑：要真模型（`data/model/model.qjm`），而且它跟上面那个测试抢同一个引擎，不能并发。
+/// `cargo test -p qingjian-linux --test ibus_engine -- --ignored --test-threads=1`
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "要真模型，且与上一个测试抢同一个引擎"]
+async fn the_main_loop_redraws_after_the_model_rescores() {
+    if std::env::var_os("QINGJIAN_IBUS_TEST").is_none() {
+        eprintln!("跳过：没设 QINGJIAN_IBUS_TEST=1");
+        return;
+    }
+    let Some(address) = bus_address() else {
+        eprintln!("跳过：本机没有跑 ibus-daemon");
+        return;
+    };
+    let connection = Builder::address(address.as_str())
+        .expect("IBus 地址")
+        .build()
+        .await
+        .expect("连上 IBus");
+    let bus = IBusProxy::new(&connection).await.expect("IBus 门面");
+    let context_path = bus
+        .create_input_context("qingjian-rescore-test")
+        .await
+        .expect("建输入上下文");
+    let rule = MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .path(context_path.as_ref())
+        .expect("按上下文路径过滤")
+        .build();
+    let signals = MessageStream::for_match_rule(rule, &connection, Some(4096))
+        .await
+        .expect("订阅信号");
+    let collected = Collected::spawn(signals);
+    let context = InputContextProxy::builder(&connection)
+        .path(context_path.as_ref())
+        .expect("上下文路径")
+        .build()
+        .await
+        .expect("上下文代理");
+    context
+        .set_capabilities(CAPABILITIES)
+        .await
+        .expect("声明能力");
+    if let Err(per_context) = context.set_engine("qingjian").await
+        && let Err(global) = bus.set_global_engine("qingjian").await
+    {
+        eprintln!("跳过：切不到 qingjian 引擎（按上下文：{per_context}；全局：{global}）");
+        return;
+    }
+    context.focus_in().await.expect("拿焦点");
+    // 同一个进程里只有一份组句状态：上一个测试若留了半截缓冲，先用 Esc 清掉
+    context
+        .process_key_event(KEYSYM_ESCAPE, KEY_ESCAPE, 0)
+        .await
+        .expect("Esc 送达");
+
+    // 一段够长的拼音才有整句路径可重排
+    for c in "zhonghuarenmingongheguo".chars() {
+        context
+            .process_key_event(c as u32, keycode(c), 0)
+            .await
+            .expect("按键送达");
+    }
+    // 模型在引擎进程里后台加载（debug 构建下要好几秒），加载完之后的第一次查询才会记下要打分的路径，
+    // 所以先等一会儿再敲一键——真实使用里那就是用户接着敲的下一键。
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    context
+        .process_key_event('w' as u32, keycode('w'), 0)
+        .await
+        .expect("按键送达");
+    // 这一等**必须短于防抖的 80 ms**：等按键路径上那条候选表更新到达，但别等到重排推来的那一帧，
+    // 否则它会被算进基准里，测试就永远等不到「新」的一条了（这里写成 200 ms 时正是这样假失败的）。
+    tokio::time::sleep(Duration::from_millis(40)).await;
+
+    // 从这里开始不再发任何按键：再收到的候选表更新只可能是主循环推的
+    let before = collected.count("UpdateLookupTable");
+    let deadline = tokio::time::Instant::now() + SIGNAL_TIMEOUT;
+    while tokio::time::Instant::now() < deadline {
+        if collected.count("UpdateLookupTable") > before {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!(
+        "停手之后没等到重排推来的那一帧；收到的是 {}",
+        collected.summary()
+    );
+}
+
 /// 订阅后立刻起一条任务把信号全收下来，测试再从收到的里面找。
 ///
 /// 不能边断言边拉流：zbus 的信号流是有界广播，连发几次按键期间没人消费就会丢最旧的消息，
@@ -210,6 +345,16 @@ impl Collected {
             .iter()
             .find(|(member, payload)| member == name && payload.contains(needle))
             .map(|(_, payload)| payload.clone())
+    }
+
+    /// 收到过几条这个名字的信号。
+    fn count(&self, name: &str) -> usize {
+        self.seen
+            .lock()
+            .expect("信号表")
+            .iter()
+            .filter(|(member, _)| member == name)
+            .count()
     }
 
     /// 失败时打出来的现场：收到过哪些信号。

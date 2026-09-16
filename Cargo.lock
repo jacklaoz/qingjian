@@ -2881,6 +2881,7 @@ dependencies = [
  "qingjian-dictionary",
  "qingjian-learning",
  "qingjian-lm",
+ "qingjian-neural",
  "qingjian-platform",
  "qingjian-translate",
  "thiserror 2.0.20",

@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use zbus::object_server::ObjectServer;
 use zbus::zvariant::OwnedObjectPath;
 
+use super::active::ActiveEngine;
 use super::engine::IBusEngine;
 use super::shared::Shared;
 
@@ -20,14 +21,18 @@ pub struct IBusFactory {
     /// 不同于 Windows Server 要按 `SessionId` 分派多会话（那边一个 Server 服务多个应用进程）。
     router: Shared,
 
+    /// 当前聚焦的是哪个引擎对象；造出来的对象共用它，主循环照着它重画。
+    active: ActiveEngine,
+
     /// 引擎对象路径的序号。
     next: AtomicU64,
 }
 
 impl IBusFactory {
-    pub fn new(router: Shared) -> Self {
+    pub fn new(router: Shared, active: ActiveEngine) -> Self {
         Self {
             router,
+            active,
             next: AtomicU64::new(1),
         }
     }
@@ -47,7 +52,10 @@ impl IBusFactory {
         let object = OwnedObjectPath::try_from(path.clone())
             .map_err(|error| zbus::fdo::Error::Failed(format!("引擎对象路径不合法：{error}")))?;
         server
-            .at(&object, IBusEngine::new(self.router.clone()))
+            .at(
+                &object,
+                IBusEngine::new(self.router.clone(), object.clone(), self.active.clone()),
+            )
             .await
             .map_err(|error| zbus::fdo::Error::Failed(format!("挂引擎对象失败：{error}")))?;
         Ok(object)

@@ -2,7 +2,7 @@
 //!
 //! 只做定位与读配置，不装配 Engine（那是下一步的事），所以它在数据还没就位时也能跑完并说清楚缺什么。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use qingjian_platform::Config;
 
@@ -37,6 +37,8 @@ pub fn run() -> bool {
     let user_ok = report_user_dirs();
     println!();
     let data_ok = report_bundled();
+    println!();
+    report_model();
     println!();
     report_config();
     let ok = user_ok && data_ok;
@@ -104,6 +106,20 @@ fn report_bundled() -> bool {
         println!("  ✗ 主词库不在，壳会回落 assets/sample/dict.tsv（几十条，只够冒烟测试）");
     }
     dict_ok
+}
+
+/// 本地整句模型：用户目录 `model/` 的优先，否则随包 `data/model/`（发行版包是 qingjian-model 那个）。
+/// 缺了只是整句不重排，不算要紧，所以不进返回值。
+fn report_model() {
+    println!("本地整句模型");
+    let root = qingjian_platform::resources::bundled_root().unwrap_or_else(|| PathBuf::from("."));
+    match crate::dispatch::find_model(paths::data_dir().ok().as_deref(), &root) {
+        Some(path) => println!("  ✓ {}  {}", path.display(), size_note(&path)),
+        None => println!(
+            "  · 没有（整句只用词库统计，不重排）；随包的该在 {}",
+            root.join("data/model").display()
+        ),
+    }
 }
 
 /// 配置：不存在就写一份带注释的模板，然后读回来打印几个关键项。

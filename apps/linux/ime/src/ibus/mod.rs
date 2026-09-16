@@ -5,8 +5,10 @@
 //!
 //! 分两层：[`variant`] 是 IBus 那套 GVariant 对象的序列化，[`view`] 把 Router 的
 //! [`Frame`](qingjian_platform::protocol::Frame) 折成「preedit 什么样、候选表什么样、辅助行写什么」。
-//! D-Bus 服务在 [`engine`] 与 [`factory`]。
+//! D-Bus 服务在 [`engine`] 与 [`factory`]；按键之外的重画（本地模型重排、云联想）要知道
+//! 当前聚焦的是哪个引擎对象，记在 [`active`]。
 
+pub mod active;
 pub mod component;
 pub mod engine;
 pub mod factory;

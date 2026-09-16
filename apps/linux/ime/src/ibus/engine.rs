@@ -4,10 +4,11 @@
 //! 经 [`View`] 折成 IBus 面板认的三样（preedit / 候选表 / 辅助行）再发信号出去。
 //! **不做任何排序、查词或文本变换**——那些在 Core 里。
 
-use qingjian_platform::protocol::KeyOutcome;
+use qingjian_platform::protocol::{Frame, KeyOutcome};
 use zbus::object_server::SignalEmitter;
-use zbus::zvariant::Value;
+use zbus::zvariant::{OwnedObjectPath, Value};
 
+use super::active::ActiveEngine;
 use super::shared::Shared;
 use super::variant;
 use super::view::View;
@@ -17,6 +18,46 @@ use crate::keys::{KeyInput, modifiers};
 /// 青简在 `FocusOut` 里自己把缓冲原样上屏，不靠 ibus 替它提交，所以是 CLEAR 不是 COMMIT。
 const PREEDIT_CLEAR: u32 = 0;
 
+/// 把一帧发给面板：preedit、候选表、辅助行各发一次，空的就发隐藏。
+///
+/// 按键路径与主循环（本地模型重排、云联想的异步结果）都走这里：前者的发出者由 zbus 给，
+/// 后者自己按 [`ActiveEngine`] 记下的路径造一个。
+pub(crate) async fn present_frame(emitter: &SignalEmitter<'_>, frame: &Frame) -> zbus::Result<()> {
+    let view = View::from_frame(frame);
+
+    if view.preedit.is_empty() {
+        IBusEngine::hide_preedit_text(emitter).await?;
+        IBusEngine::update_preedit_text(emitter, variant::text(""), 0, false, PREEDIT_CLEAR)
+            .await?;
+    } else {
+        let text = variant::segmented_text(&view.preedit);
+        IBusEngine::update_preedit_text(emitter, text, view.cursor, true, PREEDIT_CLEAR).await?;
+        IBusEngine::show_preedit_text(emitter).await?;
+    }
+
+    if view.has_candidates() {
+        let table = variant::lookup_table(&view.candidates, view.cursor_index, true);
+        IBusEngine::update_lookup_table(emitter, table, true).await?;
+        IBusEngine::show_lookup_table(emitter).await?;
+    } else {
+        IBusEngine::update_lookup_table(emitter, variant::lookup_table(&[], 0, false), false)
+            .await?;
+        IBusEngine::hide_lookup_table(emitter).await?;
+    }
+
+    match &view.auxiliary {
+        Some(line) => {
+            IBusEngine::update_auxiliary_text(emitter, variant::text(line), true).await?;
+            IBusEngine::show_auxiliary_text(emitter).await?;
+        }
+        None => {
+            IBusEngine::update_auxiliary_text(emitter, variant::text(""), false).await?;
+            IBusEngine::hide_auxiliary_text(emitter).await?;
+        }
+    }
+    Ok(())
+}
+
 /// 一个输入上下文的引擎对象。
 ///
 /// Router 放在 `Mutex` 里而不是另开一条工人线程：`Router` 是 `Send`（只是因为 Engine 内部那几个
@@ -25,47 +66,27 @@ const PREEDIT_CLEAR: u32 = 0;
 pub struct IBusEngine {
     /// 进程内唯一的 Router，几个引擎对象共用（同一时刻只有一个上下文有焦点）。
     router: Shared,
+
+    /// 自己的对象路径；拿到焦点时记进 [`ActiveEngine`]，主循环照着它重画。
+    path: OwnedObjectPath,
+
+    /// 当前聚焦的是哪个引擎对象，几个对象与主循环共用。
+    active: ActiveEngine,
 }
 
 impl IBusEngine {
-    pub fn new(router: Shared) -> Self {
-        Self { router }
+    pub fn new(router: Shared, path: OwnedObjectPath, active: ActiveEngine) -> Self {
+        Self {
+            router,
+            path,
+            active,
+        }
     }
 
-    /// 把一帧发给面板：preedit、候选表、辅助行各发一次，空的就发隐藏。
+    /// 把当前这一帧发给面板。
     async fn present(&self, emitter: &SignalEmitter<'_>) -> zbus::Result<()> {
         let frame = self.router.lock().current_frame();
-        let view = View::from_frame(&frame);
-
-        if view.preedit.is_empty() {
-            Self::hide_preedit_text(emitter).await?;
-            Self::update_preedit_text(emitter, variant::text(""), 0, false, PREEDIT_CLEAR).await?;
-        } else {
-            let text = variant::segmented_text(&view.preedit);
-            Self::update_preedit_text(emitter, text, view.cursor, true, PREEDIT_CLEAR).await?;
-            Self::show_preedit_text(emitter).await?;
-        }
-
-        if view.has_candidates() {
-            let table = variant::lookup_table(&view.candidates, view.cursor_index, true);
-            Self::update_lookup_table(emitter, table, true).await?;
-            Self::show_lookup_table(emitter).await?;
-        } else {
-            Self::update_lookup_table(emitter, variant::lookup_table(&[], 0, false), false).await?;
-            Self::hide_lookup_table(emitter).await?;
-        }
-
-        match &view.auxiliary {
-            Some(line) => {
-                Self::update_auxiliary_text(emitter, variant::text(line), true).await?;
-                Self::show_auxiliary_text(emitter).await?;
-            }
-            None => {
-                Self::update_auxiliary_text(emitter, variant::text(""), false).await?;
-                Self::hide_auxiliary_text(emitter).await?;
-            }
-        }
-        Ok(())
+        present_frame(emitter, &frame).await
     }
 
     /// 有要上屏的文本就发出去。
@@ -105,17 +126,21 @@ impl IBusEngine {
         if let Err(error) = self.present(&emitter).await {
             tracing::warn!(%error, "更新候选窗失败");
         }
+        // 停键 80 毫秒就要请求本地模型重排：叫主循环重算节拍，别等闲着时那一秒
+        self.router.wake_ticker();
         consumed
     }
 
     /// 拿到焦点。
     async fn focus_in(&mut self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
         tracing::debug!("拿到焦点");
+        self.active.set(self.path.clone());
         let _ = self.present(&emitter).await;
     }
 
     /// 焦点离开：缓冲原样上屏，与 macOS 的 `commitComposition`、Windows 的 `Commit` 一致。
     async fn focus_out(&mut self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
+        self.active.clear_if(&self.path);
         let text = self.router.lock().commit_raw();
         tracing::debug!(?text, "焦点离开，结束组句");
         let _ = self.commit(&emitter, text).await;
@@ -130,6 +155,7 @@ impl IBusEngine {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) {
         tracing::debug!(%client, "拿到焦点");
+        self.active.set(self.path.clone());
         let _ = self.present(&emitter).await;
     }
 
@@ -153,6 +179,7 @@ impl IBusEngine {
     }
 
     async fn disable(&mut self) {
+        self.active.clear_if(&self.path);
         self.router.lock().reset_composition();
         tracing::debug!("停用");
     }
@@ -177,6 +204,7 @@ impl IBusEngine {
     async fn property_activate(&mut self, _name: String, _state: u32) {}
 
     async fn destroy(&mut self) {
+        self.active.clear_if(&self.path);
         tracing::debug!("引擎对象销毁");
     }
 

@@ -114,17 +114,38 @@ IBUS-CRITICAL: bus_engine_proxy_g_signal: assertion 'arg0 != NULL' failed
 
 ## 打包与安装
 
-三个 `.deb`（`apps/linux/packaging/build-deb.sh`）：程序 2.1 MB、数据 27 MB、模型 49 MB。
-分开是因为发行版不收一百多兆的单包，而且数据与模型的更新节奏跟代码不一样。
-程序包不依赖后两个：缺语言模型退化成一元词频、缺模型不重排，Core 本来就支持。
+四个 `.deb`（`apps/linux/packaging/build-deb.sh`）：程序 3.5 MB、设置界面 1.4 MB、数据 27 MB、模型 49 MB。
+数据与模型分开是因为发行版不收一百多兆的单包，而且它们的更新节奏跟代码不一样；
+程序包不依赖这两个：缺语言模型退化成一元词频、缺模型不重排，Core 本来就支持。
+**设置界面单独一个包**是后来拆的：输入法本体只链 libc / libm / libgcc（IBus 走纯 Rust 的 zbus），
+设置界面是这一套里唯一要 GTK4 的东西，合在一起等于让 KDE / Qt 环境装个输入法就拖进整棵 GTK 树。
 
 装到 `/usr/bin/qingjian-linux` + `/usr/share/qingjian/{data,assets}`，组件 XML 落 `/usr/share/ibus/component/`，
 postinst / postrm 调 `ibus write-cache --system` 让 ibus 重扫。
+
+**依赖是手写的，所以 libc6 那条自己算。** 没走 `dh_shlibdeps`，漏了它的后果不是装不上而是
+**装得上、跑不起来**：dpkg 放行，启动才报 `GLIBC_2.xx not found`。脚本现在从二进制的动态符号里取
+最高的强符号版本（`pidfd_spawnp` 这类 Rust 标准库的弱引用不算），当前算出来是 2.34，
+也就是 Ubuntu 22.04 / Debian 12 / RHEL 9 起。
+`qingjian-data` 进 Recommends 同理：缺了它只有几十条样例词库，症状又是「装好了打不出字」。
+
+## 后来补上的
+
+- **本地整句模型**（`dispatch/rescore/`）：当天打了 `qingjian-model` 这个包，但壳根本没接
+  `qingjian-neural`，装了也不起作用——mac 的 `host/model.rs` 与 Windows 的 `dispatch/rescore/` 都有，
+  Linux 是第三份。接的时候顺带改了主循环：原先是固定一秒的 `tokio::time::interval`，
+  而重排要停键 80 ms 请求、20 ms 轮询，所以节拍改成由 `Router::next_tick()` 说了算，按键之后用
+  `Notify` 叫醒主循环重算。
+- **按键之外怎么重画**：这是接模型时才发现的一个洞。zbus 把信号发出者（`SignalEmitter`）交在方法参数里，
+  主循环手上没有，所以原先 `tick()` 返回的那一帧**被丢掉了**——云联想的结果其实也从来没画出去过。
+  现在引擎对象拿到焦点时把自己的对象路径记进 `ibus/active.rs`，主循环照着它
+  `SignalEmitter::from_parts` 造一个再发。tick 也改成只有帧真变了才回，空转的一秒不往 D-Bus 上发信号。
 
 ## 还没做的
 
 - **`.rpm`**：没有能验的环境，不写没跑过的打包脚本。
 - **L3 / L4**：自绘要先把 `renderer-spike` 分支合进 main（那份代码不在这台机器上），
   而 L4 的 `input-method-v2` 只有 wlroots 系实现，GNOME / KDE 验不了。
-- **设置界面**：现在改设置是编辑 `~/.config/qingjian/config.toml`，热加载即时生效。
+- ~~**设置界面**~~：当天之后补上了，GTK4 七页（`apps/linux/settings`）；也仍可直接编辑
+  `~/.config/qingjian/config.toml`，热加载即时生效。
 - **`[apps]` 按应用配置**：Wayland 拿不到前台应用标识，X11 可行但只覆盖一半平台，不做。

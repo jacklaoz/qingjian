@@ -10,7 +10,8 @@ pub(super) use self::state::Composed;
 use super::Router;
 
 impl Router {
-    /// 缓冲变化后：按 Engine 状态重建 [`Composed`]，发一次云联想请求，归零高亮与整句补全。
+    /// 缓冲变化后：按 Engine 状态重建 [`Composed`]，发一次云联想请求，归零高亮与整句补全，
+    /// 并按新缓冲重新起本地模型重排的防抖。
     pub(super) fn recompose(&mut self) {
         self.highlight = 0;
         self.navigated = false;
@@ -18,8 +19,11 @@ impl Router {
         if self.engine.composition().is_empty() {
             self.composed = None;
             self.cancel_prediction();
+            self.stop_rescoring();
             return;
         }
+        // 查询之前接一眼：模型刚加载完的话，这次查询就能记下要打分的路径
+        self.attach_loaded_model();
         let built = self.engine.query().ok().map(|query| {
             let items = query.candidates.items.clone();
             let preedit: Vec<PreeditSegment> =
@@ -48,25 +52,28 @@ impl Router {
                 Composed::Raw { text, cursor }
             }
         });
+        self.schedule_rescoring();
     }
 
-    /// 拉一次云联想结果：云端词并进候选布局，整句补全记下。
-    pub(super) fn poll_prediction(&mut self) {
+    /// 拉一次云联想结果：云端词并进候选布局，整句补全记下。回 `true` 表示这一帧变了。
+    pub(super) fn poll_prediction(&mut self) -> bool {
         if !self.engine.prediction_enabled() {
-            return;
+            return false;
         }
         let Some(prediction) = self.engine.poll_prediction() else {
-            return;
+            return false;
         };
-        if let Some(Composed::Candidates { layout, .. }) = self.composed.as_mut() {
-            let words: Vec<Candidate> = prediction
-                .words
-                .into_iter()
-                .map(CloudWord::into_candidate)
-                .collect();
-            layout.set_cloud(words);
-            self.sentence = prediction.sentence;
-        }
+        let Some(Composed::Candidates { layout, .. }) = self.composed.as_mut() else {
+            return false;
+        };
+        let words: Vec<Candidate> = prediction
+            .words
+            .into_iter()
+            .map(CloudWord::into_candidate)
+            .collect();
+        layout.set_cloud(words);
+        self.sentence = prediction.sentence;
+        true
     }
 
     pub(super) fn cancel_prediction(&mut self) {

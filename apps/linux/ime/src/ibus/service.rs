@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use zbus::connection::Builder;
 
+use super::active::ActiveEngine;
 use super::component::COMPONENT_NAME;
 use super::factory::IBusFactory;
 use super::shared::Shared;
@@ -15,13 +16,13 @@ use super::shared::Shared;
 const FACTORY_PATH: &str = "/org/freedesktop/IBus/Factory";
 
 /// 连上总线、挂好工厂、占住组件名。返回的连接活着服务就活着。
-pub async fn serve(router: Shared) -> Result<zbus::Connection, zbus::Error> {
+pub async fn serve(router: Shared, active: ActiveEngine) -> Result<zbus::Connection, zbus::Error> {
     let address = bus_address().ok_or_else(|| {
         zbus::Error::Address("找不到 IBus 总线地址（IBUS_ADDRESS 没设，地址文件也没有）".to_owned())
     })?;
     tracing::info!(%address, "连 IBus 总线");
     let connection = Builder::address(address.as_str())?
-        .serve_at(FACTORY_PATH, IBusFactory::new(router))?
+        .serve_at(FACTORY_PATH, IBusFactory::new(router, active))?
         .name(COMPONENT_NAME)?
         .build()
         .await?;
