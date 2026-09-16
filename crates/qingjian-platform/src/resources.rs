@@ -10,9 +10,15 @@
 
 use std::path::{Path, PathBuf};
 
-/// Linux 发行版包的数据位置，按先后顺序找：本地装的优先于发行版装的。
+/// Linux 发行版包的数据位置，按先后顺序找：本地装的优先于发行版装的，最后才是 Flatpak。
+///
+/// `/app` 是 Flatpak 给应用的前缀（沙箱里的 `/usr` 是 runtime 的，不会有我们的东西）。
 #[cfg(target_os = "linux")]
-const SYSTEM_ROOTS: [&str; 2] = ["/usr/local/share/qingjian", "/usr/share/qingjian"];
+const SYSTEM_ROOTS: [&str; 3] = [
+    "/usr/local/share/qingjian",
+    "/usr/share/qingjian",
+    "/app/share/qingjian",
+];
 
 /// 随包资源的根目录：其下有 `data/` 与 `assets/`。装机布局与 exe 同级，否则回落开发布局的仓库根，
 /// Linux 上再回落系统布局（`/usr/share/qingjian`）；都没有为 `None`。

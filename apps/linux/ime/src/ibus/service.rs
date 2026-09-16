@@ -121,14 +121,22 @@ fn read_address(path: &Path) -> Option<String> {
     })
 }
 
-/// 地址文件所在目录 `$XDG_CONFIG_HOME/ibus/bus`。
+/// 地址文件所在目录 `$XDG_CONFIG_HOME/ibus/bus`，回退 `$HOME/.config/ibus/bus`。
+///
+/// **两处都要找是为了 Flatpak**：沙箱里 `XDG_CONFIG_HOME` 被改成 `~/.var/app/<id>/config`，
+/// 而 ibus 的地址文件是**宿主机上** ibus-daemon 写的，仍在 `~/.config/ibus/bus`（manifest 里开了只读权限）。
+/// 只认前者就会在沙箱里找不到总线，症状是引擎起来就退出。
 fn bus_dir() -> Option<PathBuf> {
-    let base = match std::env::var_os("XDG_CONFIG_HOME") {
-        Some(value) if PathBuf::from(&value).is_absolute() => PathBuf::from(value),
-        _ => PathBuf::from(std::env::var_os("HOME")?).join(".config"),
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let configured = match std::env::var_os("XDG_CONFIG_HOME") {
+        Some(value) if PathBuf::from(&value).is_absolute() => Some(PathBuf::from(value)),
+        _ => None,
     };
-    let dir = base.join("ibus/bus");
-    dir.is_dir().then_some(dir)
+    [configured, home.map(|home| home.join(".config"))]
+        .into_iter()
+        .flatten()
+        .map(|base| base.join("ibus/bus"))
+        .find(|dir| dir.is_dir())
 }
 
 fn machine_id() -> Option<String> {

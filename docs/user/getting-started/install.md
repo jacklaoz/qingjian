@@ -76,9 +76,38 @@ description: macOS、Windows 与 Linux 的安装步骤：系统要求、安装�
 - **KDE Plasma**：部分发行版默认使用另一套输入法框架 Fcitx5。若输入源列表中找不到青简，到「系统设置 → 键盘 → 虚拟键盘」中选择 IBus，注销后重新登录。
 - **X11 会话**：需安装 `ibus-gtk3`、`ibus-gtk4`（按上述命令安装时会一并装上），并执行 `im-config -n ibus` 后重新登录，否则部分程序中无法输入。Wayland 会话不需要这一步。
 - **基于 Electron 的程序**（Visual Studio Code、Chrome 等）：在 Wayland 会话中需以 `--enable-wayland-ime` 参数启动，否则拼音不在光标处显示。
-- **其他发行版**（Fedora、Arch、openSUSE 等）：暂无现成的安装包，需自行构建，步骤见项目仓库。
+- **其他发行版**（Fedora、Arch、openSUSE 等）：使用下方的 Flatpak 包，或自行构建，步骤见项目仓库。
 
 若安装后打不出字，在终端执行 `qingjian-linux --check`，它会逐项列出所需文件的位置与缺失情况。
+
+### 其他发行版：Flatpak
+
+Fedora、Arch、openSUSE 等没有 `.deb` 的发行版可用 Flatpak 包。**它比 `.deb` 多一个必需的步骤**：
+青简是输入法，需要由系统的输入法框架启动，而框架只从系统目录中查找输入法，看不到 Flatpak 内部的内容，
+因此装完后需手动注册一次。
+
+1. 安装 Flatpak 包：
+
+   ```bash
+   flatpak install --user qingjian.flatpak
+   ```
+
+2. 注册到输入法框架（需要管理员密码，只需做一次；升级 Flatpak 包时不必重做）：
+
+   ```bash
+   flatpak run --command=qingjian-linux app.qingjian.Qingjian --ibus-xml \
+       "flatpak run --command=qingjian-linux app.qingjian.Qingjian" \
+       | sudo tee /usr/share/ibus/component/qingjian.xml > /dev/null
+   ibus write-cache --system && ibus restart
+   ```
+
+3. 在「设置 → 键盘 → 输入源」中加入「青简」。
+
+设置界面在应用列表中照常出现，也可执行 `flatpak run app.qingjian.Qingjian` 打开。
+自检命令为 `flatpak run --command=qingjian-linux app.qingjian.Qingjian --check`。
+
+**Flatpak 版的数据与 `.deb` 版不互通**：两者的设置与学习数据分别保存，位置见[数据与日志](../help/data-and-logs.md#本机文件)。
+从一种装法换到另一种时，需自行复制这些文件，否则学到的词与统计不会跟过去。
 
 ## 升级与卸载
 

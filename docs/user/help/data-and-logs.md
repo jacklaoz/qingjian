@@ -11,6 +11,7 @@ description: 青简在本机保存的文件及其内容、云联想发送的内�
 - **macOS**：「~/Library/Application Support/Qingjian/」（访达中按 `⇧⌘G` 输入此路径）。
 - **Windows**：「%APPDATA%\Qingjian」（在资源管理器地址栏中直接输入此路径）。
 - **Linux**：「~/.local/share/qingjian/」；配置文件 `config.toml` 与 `.env` 按本地惯例另放在「~/.config/qingjian/」。
+  Flatpak 版另有一套，在「~/.var/app/app.qingjian.Qingjian/」下的「data/qingjian/」与「config/qingjian/」，与上述位置不互通。
 
 均为纯文本，可随时打开查看：
 

@@ -6,7 +6,7 @@ Linux 端是**一个产品、两个产物**，各自一个 package，同放本�
 | --- | --- | --- | --- |
 | `ime/` | `qingjian-linux` | `qingjian-linux` | 输入法本体：走 IBus 接上 `qingjian-core::Engine`，把候选交给 IBus 面板画 |
 | `settings/` | `qingjian-linux-settings` | `qingjian-settings` | GTK4 设置界面：左侧导航 + 各分节表单，读写 `~/.config/qingjian/config.toml` |
-| `packaging/` | — | 四个 `.deb` | `build-deb.sh`：程序 / 设置界面 / 数据 / 模型 |
+| `packaging/` | — | 四个 `.deb`、一个 Flatpak | `build-deb.sh`（程序 / 设置界面 / 数据 / 模型）、`build-flatpak.sh` |
 
 接入方案（IBus 而不是 Fcitx5 或原生 `input-method-v2`）与分期见 [`docs/plan/linux_plan.md`](../../docs/plan/linux_plan.md)，
 搭起来时踩的坑与验收数字在 [`docs/notes/linux-bringup.md`](../../docs/notes/linux-bringup.md)。
@@ -113,6 +113,45 @@ ibus restart                               # 或注销重登，否则输入源�
 - **候选窗与拼音行是 IBus 面板画的**，字体配色跟着桌面走；`[general]` 里的 `layout` / `theme` 在这条路上不生效（自绘是 L4 的事，只做 wlroots）。
 
 用户视角的安装、桌面差异与排查在 [`docs/user/getting-started/install.md`](../../docs/user/getting-started/install.md)。
+
+## Flatpak
+
+`packaging/build-flatpak.sh` 打一个 `app.qingjian.Qingjian`，引擎与设置界面都在里面。
+**它不是 `.deb` 的替代，是给非 Debian 系发行版的一条路**，因为有一处绕不过去的手工步骤：
+
+> **ibus 不按 XDG 数据目录找引擎。** 2026-09-16 实测：把组件 XML 分别放进 `$XDG_DATA_HOME/ibus/component`
+> 与 `XDG_DATA_DIRS` 里的 `ibus/component`，起一条私有 daemon，**两份都不被发现**；它只认
+> `/usr/share/ibus/component/`（与 `IBUS_COMPONENT_PATH`）。而 Flatpak 暴露文件正是靠 exports 目录进
+> `XDG_DATA_DIRS`，所以**Flatpak 装完之后，ibus 看不见里面的引擎**。
+
+于是分工是这样的：Flatpak 负责装二进制与数据，宿主机上放一个 `<exec>flatpak run …</exec>` 的组件 XML
+把两边接起来。脚本会把那个 XML 生成好并打印命令：
+
+```bash
+apps/linux/packaging/build-flatpak.sh --install      # 编译、打包、装到本用户
+sudo install -Dm644 target/flatpak/qingjian.xml /usr/share/ibus/component/qingjian.xml
+ibus write-cache --system && ibus restart
+flatpak run --command=qingjian-linux app.qingjian.Qingjian --check   # 在沙箱里自检
+```
+
+几处与 `.deb` 不同，都是沙箱带来的：
+
+- **数据在沙箱自己的目录**：配置 `~/.var/app/app.qingjian.Qingjian/config/qingjian/`，
+  学习数据 `~/.var/app/app.qingjian.Qingjian/data/qingjian/`。与 `.deb` 装的那份**不共享**，
+  两种装法之间搬家要自己 `cp`。密钥的 `.env` 同理，放沙箱的配置目录里。
+- **随包数据在 `/app/share/qingjian`**：`qingjian-platform::resources` 的系统布局里专门加了这条，
+  沙箱里的 `/usr` 是 runtime 的，不会有我们的东西。
+- **总线地址得往 `$HOME/.config` 回退**：沙箱里 `XDG_CONFIG_HOME` 被改成 `~/.var/app/<id>/config`，
+  而 ibus 的地址文件是宿主机上的 daemon 写的，仍在 `~/.config/ibus/bus`（manifest 里给了只读权限）。
+  `ibus/service.rs` 的 `bus_dir` 因此两处都找。
+- **清单装的是本机编好的二进制**，不是从源码构建。Flathub 要求构建过程离线，那需要把整棵 cargo 依赖树
+  导成 `cargo-sources.json`；自建分发用不着。真要上 Flathub 时换掉 `modules` 那一段即可，
+  权限、组件 XML、数据位置都不用动。
+- **启动多一层 `flatpak run`**：引擎是 ibus-daemon 按需拉起的，这层开销每次切到青简都要付；
+  冷启动那一次还要叠上沙箱初始化，模型加载完之前不重排（验证时第一次跑重排的端到端就因此没等到帧，热起来之后就过了）。
+- **`--user` 安装要求 ibus-daemon 看得到 `$XDG_DATA_HOME/flatpak`**：`flatpak run` 从那里找应用。
+  看不到就报 `app/app.qingjian.Qingjian/x86_64/master 未安装`，而这条**只写进 daemon 自己的日志**，
+  从输入法这边看只是「切不到引擎、超时」。桌面会话的 daemon 正常；环境被改过或用系统级 daemon 时装 `--system`。
 
 ## 版本与发布
 

@@ -153,6 +153,17 @@ postinst / postrm 调 `ibus write-cache --system` 让 ibus 重扫。
   **Linux 特有的一处**：密钥不能指望环境变量——引擎进程是 ibus-daemon 拉起来的，用户在终端 export 的东西它看不到，
   所以启动时用 dotenvy 读一遍 `~/.config/qingjian/.env`（设置界面写密钥也写在那里）。
 
+- **Flatpak**（2026-09-16）：给非 Debian 系发行版的一条路，但**它不能像别的应用那样一装就好**。
+  动手前先做了一个实验：把组件 XML 分别放进 `$XDG_DATA_HOME/ibus/component` 与 `XDG_DATA_DIRS` 里的
+  `ibus/component`，起一条私有 daemon，**两份都没被发现**，daemon 只认得 `/usr/share/ibus/component/` 里
+  系统装的那份。也就是说 **ibus 不按 XDG 数据目录找引擎**，而 Flatpak 暴露文件恰恰只靠 exports 进
+  `XDG_DATA_DIRS`——这条把「Flatpak 装完就能用」堵死了，只能由用户在宿主机上放一个
+  `<exec>flatpak run …</exec>` 的组件 XML 把两边接起来。
+  另外三处是沙箱的常规代价，都能用 `finish-args` 解决：总线 socket 与地址文件在宿主机上（给只读权限，
+  而且 `bus_dir` 要往 `$HOME/.config` 回退一次，因为沙箱改掉了 `XDG_CONFIG_HOME`）、
+  随包数据落在 `/app/share/qingjian`（`resources` 的系统布局里加了这条）、
+  用户数据进 `~/.var/app/<id>/`，与 `.deb` 装的那份不互通。
+
 ## 还没做的
 
 - **`.rpm`**：没有能验的环境，不写没跑过的打包脚本。
