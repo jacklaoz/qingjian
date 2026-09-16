@@ -1,6 +1,6 @@
 //! Router 要用的配置项。
 
-use qingjian_core::ShuangpinScheme;
+use qingjian_core::{ShuangpinScheme, TraditionalVariant};
 use qingjian_platform::protocol::KeyModifiers;
 use qingjian_platform::{Config, LayoutMode, ThemeMode};
 
@@ -45,6 +45,9 @@ pub struct RouterConfig {
 
     /// 双拼方案（`[general] shuangpin`）；全拼为 `None`。
     pub shuangpin: Option<ShuangpinScheme>,
+
+    /// 繁体输出（`[general] traditional`）；缺省不转。
+    pub traditional: TraditionalVariant,
 }
 
 impl From<&Config> for RouterConfig {
@@ -65,6 +68,7 @@ impl From<&Config> for RouterConfig {
             },
             delete_keys: config.shortcut.delete_keys().into(),
             shuangpin: config.general.shuangpin(),
+            traditional: config.general.traditional,
         }
     }
 }

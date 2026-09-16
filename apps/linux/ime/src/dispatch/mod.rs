@@ -154,6 +154,7 @@ impl Router {
     fn apply_config(&mut self) {
         self.engine.set_shuangpin(self.config.shuangpin);
         self.engine.set_zhuyin_mode(self.config.zhuyin);
+        self.engine.set_traditional(self.config.traditional);
         self.engine
             .set_full_width_punctuation(self.config.full_width);
     }

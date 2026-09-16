@@ -17,6 +17,14 @@ const SHUANGPIN: &[(&str, &str)] = &[
     ("sogou", "搜狗双拼"),
 ];
 
+/// 繁体输出：配置里的写法 + 界面名，与 `TraditionalVariant::ALL` 同序。
+const TRADITIONAL: &[(&str, &str)] = &[
+    ("off", "简体"),
+    ("taiwan", "繁体（台湾正体）"),
+    ("hongkong", "繁体（香港）"),
+    ("standard", "繁体（通用字形）"),
+];
+
 pub fn build(settings: &Rc<Settings>) -> gtk::Box {
     let page = form::page();
     let general = &settings.config().general;
@@ -41,6 +49,14 @@ pub fn build(settings: &Rc<Settings>) -> gtk::Box {
         settings,
         Row::new("大千注音", "general", "zhuyin").hint("按注音键盘输入，与双拼互斥"),
         general.zhuyin,
+    );
+    form::choice(
+        &page,
+        settings,
+        Row::new("输出字形", "general", "traditional")
+            .hint("台湾正体连用语一起换（软件 → 軟體）；词库与学习数据始终是简体"),
+        TRADITIONAL,
+        general.traditional.key(),
     );
     form::number(
         &page,
