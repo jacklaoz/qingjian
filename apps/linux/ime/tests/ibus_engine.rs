@@ -135,16 +135,16 @@ async fn typing_pinyin_reaches_the_panel_and_commits() {
         assert!(consumed, "拼音字母该被吃掉：{keyval}");
     }
 
-    // 断言的是「引擎走了非空 preedit 那条分支」而不是 preedit 的内容。
-    //
-    // 带内容的 `UpdatePreeditText` 不会转发到这个**合成客户端**上（起不起面板都一样，2026-09-14 两种都试过）：
-    // 真实应用的 preedit 是 GTK / Qt 的输入法模块自己渲染的，走的不是「客户端订阅 InputContext 信号」这条路。
-    // 同一个 `IBusText` 在候选表与上屏两条路上都正常，所以不是序列化的问题——
-    // 2026-09-14 在 gnome-text-editor 里真机验过：拼音行、候选窗、上屏、学习全都对。
+    // 2026-09-14 这里断言的是 `ShowPreeditText`，因为「带内容的 `UpdatePreeditText` 收不到」，
+    // 当时归因成「真实应用的 preedit 由 GTK / Qt 的输入法模块自己渲染，不走客户端订阅这条路」。
+    // **归因错了**：真正的原因是这条信号少发了一个参数（见 `ibus/engine.rs` 的 `update_preedit_text`），
+    // ibus-daemon 解不出来就整条丢掉。补上之后带内容的 preedit 正常到达，
+    // 反倒是 `ShowPreeditText` 不再单独来了——`UpdatePreeditText` 的 `visible=true` 已经把它显示出来，
+    // daemon 那边判定「已经可见」就不再转发。
     collected
-        .wait_for("ShowPreeditText", "")
+        .wait_for("UpdatePreeditText", "ni")
         .await
-        .unwrap_or_else(|| panic!("该显示 preedit；收到的是 {}", collected.summary()));
+        .unwrap_or_else(|| panic!("preedit 里该有 ni；收到的是 {}", collected.summary()));
     collected
         .wait_for("UpdateLookupTable", "你好")
         .await
@@ -224,6 +224,9 @@ impl Collected {
 /// 三种信号的参数个数不一样，逐个试。
 fn payload(message: &zbus::Message) -> String {
     let body = message.body();
+    if let Ok((value, cursor, visible, mode)) = body.deserialize::<(Value<'_>, u32, bool, u32)>() {
+        return format!("{value:?} cursor={cursor} visible={visible} mode={mode}");
+    }
     if let Ok(value) = body.deserialize::<Value<'_>>() {
         return format!("{value:?}");
     }

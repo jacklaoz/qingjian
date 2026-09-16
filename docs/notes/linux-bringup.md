@@ -69,15 +69,31 @@ D-Bus 那层要求接口对象 `Send + Sync`，而 `Engine` 因为几个 `RefCel
 按「崩溃不丢」那条，崩一次之后输入法该照常服务，而不是永久瘫掉。现在统一走 `Shared::lock`，
 毒化了就把状态取回来接着用；按键外面再套一层 `catch_unwind`，拦下后清组句、这个键让给应用。
 
-## 合成客户端验不了「用户看到什么」
+## 「带内容的 preedit 收不到」——当天归因错了
 
 写了个 D-Bus 客户端当「应用」跑端到端，候选表和上屏都收得到，**唯独带内容的 `UpdatePreeditText` 收不到**。
 一路怀疑到序列化、面板、能力位，试了半天：起面板一样收不到，同一个 `IBusText` 在另外两条路上完全正常。
+当天的结论是「真实应用的 preedit 由 GTK / Qt 的输入法模块自己渲染，合成客户端本来就验不到」，
+测试于是退而断言 `ShowPreeditText`。
 
-真相是**真实应用的 preedit 由 GTK / Qt 的输入法模块自己渲染**，不走「客户端订阅 InputContext 信号」这条路。
-拿 D-Bus 客户端当应用来验 preedit，本来就验不到。换成开一个真的 gnome-text-editor，一分钟就看明白了。
+**这个归因是错的。** 接本地整句模型时顺手看了一眼 ibus-daemon 自己的日志，里面一直在刷：
 
-**经验**：合成客户端能验协议对不对，验不了用户看到什么。后者只能开一个真应用，没有捷径。
+```text
+GLib-CRITICAL: the GVariant format string '(vubu)' has a type of '(vubu)' but the given value has a type of '(vub)'
+IBUS-CRITICAL: bus_engine_proxy_g_signal: assertion 'arg0 != NULL' failed
+```
+
+`UpdatePreeditText` 的参数是 `(vubu)`——最后那个 `mode`（`IBUS_ENGINE_PREEDIT_CLEAR` / `COMMIT`）**不能省**。
+我们只发了 `(vub)`，daemon 解不出来，`g_return_if_fail` 打一条 CRITICAL 就把整条信号丢掉了。
+补上那个参数之后，合成客户端**立刻就收到了带内容的 preedit**，反倒是 `ShowPreeditText` 不再单独来——
+`visible=true` 已经把它显示出来，daemon 判定「已经可见」就不再转发。端到端的断言跟着改了过来。
+
+**两条经验**：
+
+1. **错在「我们这边一点错都看不到」**：信号发出去了、zbus 没报错、引擎日志干干净净，
+   出错的是收信号那一头，而它的抱怨只写在 ibus-daemon 自己的 stderr 里。
+   验 IBus 这类「对面是个 C 程序」的协议，**得去看对面的日志**，这是当天漏掉的一步。
+2. 合成客户端能验的东西比当天以为的多。它验不了的是排版与观感，协议对不对它验得了。
 
 ## 验收
 

@@ -13,6 +13,10 @@ use super::variant;
 use super::view::View;
 use crate::keys::{KeyInput, modifiers};
 
+/// `UpdatePreeditText` 的 `mode`：焦点移走时把 preedit 清掉（ibus 的 `IBUS_ENGINE_PREEDIT_CLEAR`）。
+/// 青简在 `FocusOut` 里自己把缓冲原样上屏，不靠 ibus 替它提交，所以是 CLEAR 不是 COMMIT。
+const PREEDIT_CLEAR: u32 = 0;
+
 /// 一个输入上下文的引擎对象。
 ///
 /// Router 放在 `Mutex` 里而不是另开一条工人线程：`Router` 是 `Send`（只是因为 Engine 内部那几个
@@ -35,10 +39,10 @@ impl IBusEngine {
 
         if view.preedit.is_empty() {
             Self::hide_preedit_text(emitter).await?;
-            Self::update_preedit_text(emitter, variant::text(""), 0, false).await?;
+            Self::update_preedit_text(emitter, variant::text(""), 0, false, PREEDIT_CLEAR).await?;
         } else {
             let text = variant::segmented_text(&view.preedit);
-            Self::update_preedit_text(emitter, text, view.cursor, true).await?;
+            Self::update_preedit_text(emitter, text, view.cursor, true, PREEDIT_CLEAR).await?;
             Self::show_preedit_text(emitter).await?;
         }
 
@@ -179,12 +183,16 @@ impl IBusEngine {
     #[zbus(signal)]
     async fn commit_text(emitter: &SignalEmitter<'_>, text: Value<'_>) -> zbus::Result<()>;
 
+    /// 参数是 `(vubu)`，**最后那个 `mode` 不能省**：ibus-daemon 按 `(vubu)` 解这条信号，
+    /// 少一个参数它解不出来，只在自己的日志里留一条 `arg0 != NULL` 的 CRITICAL，
+    /// 然后把整条信号丢掉——症状就是拼音行不显示，而且这边一点错都看不到。
     #[zbus(signal)]
     async fn update_preedit_text(
         emitter: &SignalEmitter<'_>,
         text: Value<'_>,
         cursor_pos: u32,
         visible: bool,
+        mode: u32,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
