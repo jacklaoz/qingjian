@@ -13,14 +13,15 @@ mod replay;
 mod rescoring;
 mod tuning;
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use clap::Parser;
 use qingjian_core::{EmojiTable, Engine, FuzzyRules, Language};
-use qingjian_dictionary::{Dictionary, WordList};
+use qingjian_dictionary::{AuxCodeLookup, AuxCodeTable, CodeTable, Dictionary, WordList};
 use qingjian_learning::FrequencyLearner;
 use qingjian_lm::BigramModel;
-use qingjian_platform::Config;
+use qingjian_platform::{Config, Scheme};
 use qingjian_predict::CloudPredictor;
 use qingjian_translate::Glossary;
 
@@ -43,9 +44,29 @@ fn run() -> Result<(), CliError> {
     let mut engine = build_engine(&args)?;
     tracing::info!(total_ms = started.elapsed().as_millis(), "Engine 就绪");
     engine.set_english_mode(args.english_mode);
+    engine.set_chinese_first(args.chinese_first);
     tuning::apply(&mut engine, &args.tune)?;
+    // 查码：只看码表，不查词、不进交互
+    if !args.aux_query.is_empty() {
+        for word in &args.aux_query {
+            let codes: Vec<&str> = engine
+                .aux_codes()
+                .iter()
+                .flat_map(|table| table.codes_of(word))
+                .collect();
+            if codes.is_empty() {
+                println!("{word}\t（没有码）");
+            } else {
+                println!("{word}\t{}", codes.join(" "));
+            }
+        }
+        return Ok(());
+    }
     if let Some(path) = &args.replay {
-        let report = replay::run(&mut engine, path, args.misses)?;
+        // 日志里形码那些行也要能重放：回放按每条的方案切引擎，所以它自己得留一份码表
+        // （`build_engine` 那份的所有权已经交给引擎了）
+        let code_table = args.wubi.as_ref().map(CodeTable::from_path).transpose()?;
+        let report = replay::run(&mut engine, path, args.misses, code_table)?;
         print!("{report}");
         return Ok(());
     }
@@ -231,24 +252,49 @@ fn build_engine(args: &Args) -> Result<Engine, CliError> {
     if config.fuzzy.any() {
         tracing::info!(rules = ?config.fuzzy, "模糊音已启用");
     }
+    engine.set_traditional(config.general.traditional);
     engine.set_fuzzy(config.fuzzy);
     engine.set_mode_keys(config.shortcut.mode);
+    // `--shuangpin` 现在写的是 [general] scheme（同一个维度的旧键已经并进去），off 就是全拼
     if let Some(scheme) = &args.shuangpin {
-        config.general.shuangpin = if scheme == "off" {
-            String::new()
+        config.general.scheme = if scheme == "off" {
+            Scheme::Pinyin.key().to_owned()
         } else {
             scheme.clone()
         };
     }
-    if let Some(scheme) = config.general.shuangpin() {
-        tracing::info!(%scheme, "双拼已启用");
+    // 两条轴：拼音侧看 `[general] scheme`，形码侧看 `[general] wubi`；`--wubi` 给了码表就算开着形码。
+    // 两边都开就是混输，见 docs/user/input/fuzzy-and-shuangpin.md
+    let scheme = config.general.scheme();
+    let wubi = config.general.wubi() || args.wubi.is_some();
+    tracing::info!(pinyin = scheme.key(), wubi, "输入方案已启用");
+    engine.set_shuangpin(scheme.shuangpin());
+    engine.set_zhuyin_mode(scheme == Scheme::Zhuyin);
+    // 拼音侧关掉且形码开着才是「只用形码」；两边都关着时留拼音兜底
+    engine.set_phonetic(scheme.is_on() || !wubi);
+    // 形码的码表由 `--wubi` 显式给（方案本身只说「用哪套」，码表文件在哪由壳决定）
+    if let Some(path) = &args.wubi {
+        engine.set_code_table(Some(CodeTable::from_path(path)?));
+        tracing::info!(table = %path.display(), "形码码表已载入");
     }
-    if config.general.zhuyin {
-        tracing::info!("大千注音已启用");
+    engine.set_aux_code_key(config.general.aux_code_key(), config.general.page_keys());
+    engine.set_aux_keep_empty(config.general.aux_code_keep_empty);
+    if !args.aux_table.is_empty() {
+        let mut tables: Vec<Arc<dyn AuxCodeLookup>> = Vec::new();
+        for path in &args.aux_table {
+            let table = AuxCodeTable::from_path(path)?;
+            tracing::info!(
+                path = %path.display(),
+                entries = table.len(),
+                words = table.word_count(),
+                "辅码码表已加载"
+            );
+            tables.push(Arc::new(table));
+        }
+        engine.set_aux_codes(tables);
+        // CLI 没有配置开关：给了码表即开辅码（缺省关），replay 统计不哑
+        engine.set_aux_enabled(true);
     }
-    engine.set_shuangpin(config.general.shuangpin());
-    engine.set_zhuyin_mode(config.general.zhuyin);
-    engine.set_traditional(config.general.traditional);
     if config.predict.enabled {
         let predictor = CloudPredictor::new(&config.predict)?;
         engine = engine.with_predictor(Box::new(predictor));

@@ -17,8 +17,32 @@ pub(crate) fn join_marked(segmentations: &[Segmentation], tail: &str) -> String 
     text
 }
 
+/// 与 [`join_marked`] 相同的分段，但用原样大小写的输入（`Cpan`）：切分是按小写算的，
+/// 大小写只影响显示，逐段按同样的字节长度取回原样文本。
+pub(crate) fn join_marked_typed(typed: &str, segmentations: &[Segmentation], tail: &str) -> String {
+    let mut text = String::new();
+    let mut offset = 0;
+    if let Some(first) = segmentations.first() {
+        for (index, syllable) in first.syllables.iter().enumerate() {
+            if index > 0 {
+                text.push('\'');
+            }
+            let end = (offset + syllable.text.len()).min(typed.len());
+            text.push_str(&typed[offset..end]);
+            offset = end;
+        }
+    }
+    if !tail.is_empty() {
+        if !text.is_empty() {
+            text.push('\'');
+        }
+        text.push_str(&typed[offset.min(typed.len())..]);
+    }
+    text
+}
+
 use crate::engine::timings::Timings;
-use crate::engine::{MarkedKind, MarkedSegment};
+use crate::engine::{AuxSegment, MarkedKind, MarkedSegment};
 
 /// 不带译文的候选查询结果。
 #[derive(Debug, Clone, Default)]
@@ -52,6 +76,10 @@ pub struct Query {
 
     /// 开启双拼或注音时的显示字串（如 "ㄅㄨˋ"）。如果有此值，preedit 就优先显示它，而不是拼音。
     pub typed_display: Option<String>,
+
+    /// 辅码态：触发键与码段（码段可为空——刚触发）。`Some` 时 preedit 在拼音段之后多出
+    /// [触发键 `Typed`][码段 `AuxCode`] 两段，候选也已经按码段筛过。
+    pub aux: Option<AuxSegment>,
 }
 
 impl Query {
@@ -74,7 +102,8 @@ impl Query {
     }
 
     /// 给 marked text 用的显示形式：最优切分的音节用 `'` 连接，再接未切分尾部，
-    /// 光标后的剩余拼音跟在最后。`kaifa` → `kai'fa`，`kf` → `k'f`，`ni|hao` → `ni'hao`。
+    /// 辅码态接上触发键与码段，光标后的剩余拼音跟在最后。
+    /// `kaifa` → `kai'fa`，`kf` → `k'f`，`ni|hao` → `ni'hao`，`nihao;rb` → `ni'hao;rb`。
     pub fn marked_text(&self) -> String {
         self.marked_segments()
             .iter()
@@ -99,6 +128,16 @@ impl Query {
                 segments.push(MarkedSegment::new(typed, MarkedKind::Typed));
             }
         }
+        if let Some(aux) = &self.aux {
+            // 触发键按 Typed 画（不突出），码段是新段类型；码段为空时只多这一段触发键
+            segments.push(MarkedSegment::new(
+                aux.trigger.to_string(),
+                MarkedKind::Typed,
+            ));
+            if !aux.code.is_empty() {
+                segments.push(MarkedSegment::new(aux.code.clone(), MarkedKind::AuxCode));
+            }
+        }
         if !self.rest.is_empty() {
             let rest = if segments.is_empty() {
                 self.rest.clone()
@@ -117,7 +156,8 @@ impl Query {
         if self.decoded_keys && self.cursor == 0 {
             return 0;
         }
-        if self.correction.is_some() || self.decoded_keys {
+        // 辅码态光标也总在末尾：触发键与码段都拼在最后
+        if self.correction.is_some() || self.decoded_keys || self.aux.is_some() {
             return self
                 .marked_segments()
                 .iter()

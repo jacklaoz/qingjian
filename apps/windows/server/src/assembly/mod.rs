@@ -3,13 +3,13 @@
 mod language_model;
 mod spec;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use qingjian_core::{EmojiTable, Engine, Language};
 use qingjian_dictionary::{Dictionary, WordList};
 use qingjian_learning::{FrequencyLearner, InputLog, UsageStats, VocabularyBook};
-use qingjian_platform::extra_dictionaries;
+use qingjian_platform::{Config, code_tables, extra_dictionaries};
 use qingjian_translate::{Glossary, LayeredTranslator, LevelTable, PersonalGlossary};
 
 use crate::error::ServerError;
@@ -53,6 +53,11 @@ pub fn assemble(spec: &AssemblySpec) -> Result<Engine, ServerError> {
         user_dicts_dir(spec.user_dir.as_deref()).as_deref(),
         &spec.dictionaries,
     ));
+    engine.set_aux_codes(code_tables::load(
+        spec.bundled_codes_dir.as_deref(),
+        user_codes_dir(spec.user_dir.as_deref()).as_deref(),
+        &spec.aux_code,
+    ));
     if let Some(path) = &spec.english_glossary {
         match Glossary::from_path(Language::Chinese, path) {
             Ok(glossary) => {
@@ -86,8 +91,15 @@ pub fn assemble(spec: &AssemblySpec) -> Result<Engine, ServerError> {
 }
 
 /// 用户导入词库目录 `dicts/`，不存在则创建；建不了当没有。
-fn user_dicts_dir(user_dir: Option<&Path>) -> Option<std::path::PathBuf> {
+pub fn user_dicts_dir(user_dir: Option<&Path>) -> Option<std::path::PathBuf> {
     let dir = user_dir?.join("dicts");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
+/// 用户导入码表目录 `codes/`，不存在则创建；建不了当没有。
+pub fn user_codes_dir(user_dir: Option<&Path>) -> Option<std::path::PathBuf> {
+    let dir = user_dir?.join("codes");
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir)
 }
@@ -104,8 +116,33 @@ fn load_learner(dir: &Path) -> FrequencyLearner {
     }
 }
 
-/// 随包释义表叠上个人释义表（`user-glossary-<语言>.tsv`）。
-fn load_glossary(
+/// 配置里的学习语言；`off` 为 `None`（不显示译文），写得不认识按英文。
+pub fn learning_language(config: &Config) -> Option<Language> {
+    if config.general.learning_language_off() {
+        return None;
+    }
+    let code = &config.general.learning_language;
+    Some(code.parse().unwrap_or_else(|_| {
+        tracing::warn!(code, "不认识的学习语言，按英文");
+        Language::English
+    }))
+}
+
+/// 某语言的释义表：`<root>/data/generated/` 打包过的 `.qj` 优先，否则随 git 的 `assets/glossary/` TSV；都没有为 `None`。
+pub fn glossary_file(root: &Path, language: Language) -> Option<PathBuf> {
+    let code = language.code();
+    [
+        root.join("data/generated")
+            .join(format!("glossary-{code}.qj")),
+        root.join("assets/glossary")
+            .join(format!("glossary-{code}.tsv")),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+}
+
+/// 随包释义表叠上个人释义表（`user-glossary-<语言>.tsv`）。启动装配与热加载换语言共用。
+pub(crate) fn load_glossary(
     language: Language,
     path: &Path,
     user_dir: Option<&Path>,
@@ -134,7 +171,7 @@ fn load_vocabulary(user_dir: &Path, levels_dir: Option<&Path>) -> VocabularyBook
     let Some(levels_dir) = levels_dir else {
         return vocabulary;
     };
-    for language in [Language::English, Language::Japanese] {
+    for language in [Language::English, Language::Japanese, Language::Spanish] {
         let path = levels_dir.join(format!("levels-{}.tsv", language.code()));
         if !path.is_file() {
             continue;

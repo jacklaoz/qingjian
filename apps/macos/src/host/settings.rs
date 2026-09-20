@@ -2,6 +2,8 @@
 
 use super::diagnostics::{copy_to_pasteboard, open_with_system};
 use super::*;
+use crate::preferences::DEFAULT_FONT_LABEL;
+use qingjian_platform::ShiftLetter;
 
 impl Host {
     /// 写短语前读取文件；外部规则有变化时同步列表并请用户重新确认。
@@ -69,7 +71,7 @@ impl Host {
                 self.preferences.sync_usage(
                     &self.engine.usage_summary(),
                     &self.engine.vocabulary_summary(),
-                    self.engine.learning_language(),
+                    self.learning_language,
                 );
                 self.preferences.show();
             }
@@ -164,10 +166,13 @@ impl Host {
                     .set_bool("general", "full_width_punctuation", index == 0);
             }
             (Setting::LearningLanguage, SettingValue::Index(index)) => {
-                if let Some(language) = self.languages.get(index) {
-                    self.settings
-                        .set_value("general", "learning_language", language.code());
-                }
+                // 菜单最后一项是「不显示译文」
+                let code = self
+                    .languages
+                    .get(index)
+                    .map_or(LEARNING_LANGUAGE_OFF, |language| language.code());
+                self.settings
+                    .set_value("general", "learning_language", code);
             }
             (Setting::PageSize, SettingValue::Index(index)) => {
                 self.settings
@@ -183,15 +188,32 @@ impl Host {
                     self.settings.set_value("general", "theme", theme.key());
                 }
             }
+            (Setting::Renderer, SettingValue::Index(index)) => {
+                if let Some(renderer) = CandidateRenderer::ALL.get(index) {
+                    self.settings
+                        .set_value("general", "renderer", renderer.key());
+                }
+            }
+            (Setting::Font, SettingValue::Text(text)) => {
+                let font = text.trim();
+                let font = if font == DEFAULT_FONT_LABEL { "" } else { font };
+                self.settings.set_value("general", "font", font);
+            }
             (Setting::Layout, SettingValue::Index(index)) => {
                 if let Some(layout) = LayoutMode::ALL.get(index) {
                     self.settings.set_value("general", "layout", layout.key());
                 }
             }
+            (Setting::HorizontalGrid, SettingValue::Bool(on)) => {
+                self.settings.set_bool("general", "horizontal_grid", on);
+            }
             (Setting::Preedit, SettingValue::Index(index)) => {
                 if let Some(mode) = PreeditMode::ALL.get(index) {
                     self.settings.set_value("general", "preedit", mode.key());
                 }
+            }
+            (Setting::QuestionMark, SettingValue::Bool(on)) => {
+                self.settings.set_bool("shortcut", "question_mark", on);
             }
             (Setting::ExpressionKey | Setting::QuestionKey, SettingValue::Index(index)) => {
                 if let Some(&key) = ModeKeys::CANDIDATES.get(index) {
@@ -267,6 +289,8 @@ impl Host {
                 self.settings
                     .set_value("shortcut", "question", defaults.mode.question.to_string());
                 self.settings
+                    .set_bool("shortcut", "question_mark", defaults.mode.question_mark);
+                self.settings
                     .set_value("shortcut", "translation", defaults.translation.key());
                 self.settings.set_value(
                     "shortcut",
@@ -319,6 +343,18 @@ impl Host {
             (Setting::EnglishCandidates, SettingValue::Bool(on)) => {
                 self.settings.set_bool("general", "english_candidates", on);
             }
+            (Setting::ChineseFirst, SettingValue::Bool(on)) => {
+                self.settings.set_bool("general", "chinese_first", on);
+            }
+            (Setting::ShiftLetter, SettingValue::Bool(on)) => {
+                let mode = if on {
+                    ShiftLetter::Compose
+                } else {
+                    ShiftLetter::Passthrough
+                };
+                self.settings
+                    .set_value("general", "shift_letter", mode.key());
+            }
             // 勾上写缺省的终端 / 编辑器列表，去掉写空表；手改过的列表勾一下就回缺省
             (Setting::EnglishCandidatesOffInApps, SettingValue::Bool(on)) => {
                 let apps: toml_edit::Array = if on {
@@ -329,13 +365,18 @@ impl Host {
                 self.settings
                     .set_value("apps", "english_candidates_off", apps);
             }
-            // 弹出菜单第 0 项是「关」，之后按 ShuangpinScheme::ALL 的顺序
-            (Setting::Shuangpin, SettingValue::Index(index)) => {
-                let key = index
-                    .checked_sub(1)
-                    .and_then(|i| ShuangpinScheme::ALL.get(i))
-                    .map_or("", |scheme| scheme.key());
-                self.settings.set_value("general", "shuangpin", key);
+            // 弹出菜单按 Scheme::ALL 的顺序。写的是 [general] scheme（旧键 shuangpin 已并入它）：
+            // 写旧键的话，配置里 scheme 的缺省值非空、解析时优先，用户选的方案会被静默忽略。
+            (Setting::Scheme, SettingValue::Index(index)) => {
+                let key = Scheme::ALL
+                    .get(index)
+                    .map_or(Scheme::Pinyin.key(), |scheme| scheme.key());
+                self.settings.set_value("general", "scheme", key);
+            }
+            // 五笔：勾上就是 86 版，取消就是关。与上面的拼音方案同时开着就是混输。
+            (Setting::Wubi, SettingValue::Bool(on)) => {
+                self.settings
+                    .set_value("general", "wubi", if on { "wubi86" } else { "" });
             }
             // 弹出菜单按 TraditionalVariant::ALL 的顺序，第 0 项是简体
             (Setting::Traditional, SettingValue::Index(index)) => {
@@ -360,12 +401,25 @@ impl Host {
             }
             (Setting::ApiKey, SettingValue::Text(text)) => {
                 let text = text.trim();
-                if !text.is_empty() && self.settings.set_env_var(&config.predict.api_key_env, text)
-                {
-                    // 密钥换了必须重建 Predictor
-                    self.apply_config(true);
+                // 密码框看不见内容，粘贴多了（带上了终端提示符、命令）用户发现不了；这种值写进 .env 还会让整个文件解析失败
+                if text.chars().any(|c| !c.is_ascii_graphic()) {
+                    self.preferences.set_status(
+                        "密钥没有保存：里面有空格或非英文字符，多半是粘贴时多带了别的内容",
+                    );
                     return;
                 }
+                if text.is_empty() {
+                    return;
+                }
+                if self.settings.set_env_var(&config.predict.api_key_env, text) {
+                    // 密钥换了必须重建 Predictor
+                    self.apply_config(true);
+                    self.preferences.set_status("密钥已保存");
+                } else {
+                    self.preferences
+                        .set_status("密钥没有保存：写不进配置目录的 .env，详情见日志");
+                }
+                return;
             }
             (Setting::TestCloud, _) => {
                 self.start_cloud_test();
@@ -379,6 +433,13 @@ impl Host {
             }
             (Setting::InputLog, SettingValue::Bool(on)) => {
                 self.settings.set_bool("general", "input_log", on);
+            }
+            (Setting::Learning, SettingValue::Bool(on)) => {
+                self.settings.set_bool("general", "learning", on);
+            }
+            (Setting::SystemTextReplacements, SettingValue::Bool(on)) => {
+                self.settings
+                    .set_bool("general", "system_text_replacements", on);
             }
             (Setting::ClearInputLog, _) => {
                 self.clear_input_log();
@@ -406,6 +467,19 @@ impl Host {
                 copy_to_pasteboard(&self.diagnostics());
                 self.preferences
                     .set_status("诊断信息已复制到剪贴板，粘贴给作者即可");
+                return;
+            }
+            (Setting::ExportLogs, _) => {
+                match logging::export_logs() {
+                    Ok(zip) => {
+                        open_with_system(&["-R", &zip.to_string_lossy()]);
+                        self.preferences
+                            .set_status("日志已打包到桌面，发给作者即可");
+                    }
+                    Err(error) => self
+                        .preferences
+                        .set_status(&format!("打包日志失败：{error}")),
+                }
                 return;
             }
             (setting, value) => tracing::warn!(?setting, ?value, "设置项与控件值不匹配"),

@@ -1,5 +1,6 @@
 //! 注入与开关：词库、模糊音、双拼、翻译 / 学习 / 联想等 trait 实现的挂接，以及相应的只读访问。
 
+use super::aux_code::is_valid_aux_code_key;
 use super::*;
 use crate::engine::decoded::EngineDecoded;
 
@@ -26,7 +27,55 @@ impl Engine {
         self.shuangpin
     }
 
+    /// 挂上辅码码表（用户导入的与随包的笔画表）。照 [`Self::set_extra_dictionaries`] 的模式：壳按目录与配置装配。
+    pub fn with_aux_codes(mut self, tables: Vec<Arc<dyn AuxCodeLookup>>) -> Self {
+        self.aux_codes = tables;
+        self
+    }
+
+    /// 运行时换码表（导入 / 移除 / 开关之后）；顺带退出辅码态，免得筛的是一张已经不在的表。
+    pub fn set_aux_codes(&mut self, tables: Vec<Arc<dyn AuxCodeLookup>>) {
+        self.aux_codes = tables;
+        self.aux_code = None;
+    }
+
+    pub fn aux_codes(&self) -> &[Arc<dyn AuxCodeLookup>] {
+        &self.aux_codes
+    }
+
+    /// 换辅码触发键（配置项 `[general] aux_code_key`）。非法的键（含当前翻页键 `page_keys`，
+    /// 配置项 `[general] page_keys`）退回缺省 `;`。
+    pub fn set_aux_code_key(&mut self, key: char, page_keys: (char, char)) {
+        self.aux_code_key = if is_valid_aux_code_key(key, page_keys) {
+            key
+        } else {
+            DEFAULT_AUX_CODE_KEY
+        };
+    }
+
+    /// 换「码删空后留在辅码态」开关（配置项 `[general] aux_code_keep_empty`，缺省开）。
+    pub fn set_aux_keep_empty(&mut self, keep: bool) {
+        self.aux_keep_empty = keep;
+    }
+
+    /// 换辅码总开关（配置项 `[aux_code] enabled`，缺省关）。关掉时辅码整线关：触发键不进辅码态，
+    /// 纯拼音态也不逐候查首条码；开着但没有码表（`aux_codes` 为空）同样不进辅码态。
+    pub fn set_aux_enabled(&mut self, enabled: bool) {
+        self.aux_enabled = enabled;
+    }
+
+    /// 换「候选上显示码」开关（配置项 `[general] aux_code_show`，缺省关）：纯拼音态挂不挂首条码。
+    pub fn set_aux_show(&mut self, show: bool) {
+        self.aux_show = show;
+    }
+
     /// 設置是否啟用注音模式。開啟後鍵盤輸入按大千佈局解析。
+    /// 学习开关（`[general] learning`）：关掉后不再记词频、用户词、个人 n-gram 与敲错表，已学的照常参与排序；
+    /// 私密输入是另一个独立的开关（[`Self::set_private`]）。
+    pub fn set_learning(&mut self, enabled: bool) {
+        self.learner.set_disabled(!enabled);
+    }
+
     pub fn set_zhuyin_mode(&mut self, on: bool) {
         self.zhuyin = on;
         self.forget_span_cache();
@@ -48,6 +97,35 @@ impl Engine {
     /// 当前的繁体输出变体。
     pub fn traditional(&self) -> TraditionalVariant {
         self.traditional.variant()
+    }
+
+    /// 换形码码表（五笔），`None` 回到拼音的诸方案。编码与拼音是两套键，纠错缓存一并清掉。
+    pub fn set_code_table(&mut self, table: Option<CodeTable>) {
+        self.code = table;
+        *self.correction_cache.borrow_mut() = None;
+        self.forget_span_cache();
+    }
+
+    /// 当前的形码码表；`None` 表示走拼音（全拼 / 双拼 / 注音）。
+    pub fn code_table(&self) -> Option<&CodeTable> {
+        self.code.as_ref()
+    }
+
+    /// 是否处在形码方案下。
+    pub fn is_code_mode(&self) -> bool {
+        self.code.is_some()
+    }
+
+    /// 拼音侧参不参与查询。形码开着时把它关掉就是「只用形码」（`[general] scheme = "none"`）；
+    /// 两边都开是混输，见 [`Self::set_code_table`] 与 [`Self::query_mixed`]。
+    pub fn set_phonetic(&mut self, on: bool) {
+        self.phonetic = on;
+        *self.correction_cache.borrow_mut() = None;
+        self.forget_span_cache();
+    }
+
+    pub fn is_phonetic(&self) -> bool {
+        self.phonetic
     }
 
     /// 判斷注音模式下目前是否還需要輸入聲調。
@@ -79,13 +157,40 @@ impl Engine {
             .is_some_and(|scheme| scheme.decode(body).pending_initial())
     }
 
-    /// 有效的模式键：双拼下 v / u / i 都是音节键，字母模式键让位，只剩 `?` 开头的问字。
+    /// 只用形码：码表挂着、拼音侧关着。
+    pub(super) fn code_only(&self) -> bool {
+        self.code.is_some() && !self.phonetic
+    }
+
+    /// 混输：码表挂着、拼音侧也开着。
+    pub(super) fn mixed(&self) -> bool {
+        self.code.is_some() && self.phonetic
+    }
+
+    /// 有效的模式键：只用形码时所有字母都是字根键，只剩 `?` 开头的问字；
+    /// 双拼与混输下小写字母各有用处，换成大写字母。
     pub(super) fn modes(&self) -> ModeKeys {
-        if self.shuangpin.is_some() {
-            ModeKeys::LETTERLESS
+        if self.code_only() {
+            self.modes.letterless()
+        } else if self.shuangpin.is_some() || self.mixed() {
+            self.modes.shifted()
         } else {
             self.modes
         }
+    }
+
+    /// 缓冲区为空时敲的大写字母该不该进表达式 / 问字模式：只在双拼或混输下、且是模式键的大写时。
+    /// 壳只在中文模式、Caps 灭时问。
+    pub fn takes_mode_letter(&self, c: char) -> bool {
+        let modes = self.modes();
+        (self.shuangpin.is_some() || self.mixed())
+            && !self.zhuyin
+            && (c == modes.expression || c == modes.question)
+    }
+
+    /// 缓冲区为空时敲 `?` 该不该进问字模式（配置 `[shortcut] question_mark`）：壳据此决定问号是入口还是标点。
+    pub fn takes_question_mark(&self) -> bool {
+        self.modes().question_mark
     }
 
     /// 双拼开着时把一段键解成全拼；全拼下为 `None`，调用方原样用键。
@@ -99,7 +204,11 @@ impl Engine {
     }
 
     /// 光标后剩余拼音的显示形式：双拼先解码；能切就按音节用 `'` 连上，切不动就原样。
+    /// 只用形码时剩余段是编码，原样显示。
     pub(super) fn marked_rest(&self, rest: &str) -> String {
+        if self.code_only() {
+            return rest.to_owned();
+        }
         match self.decode(rest) {
             Some(decoded) => decoded.marked(),
             None => marked_rest(rest),
@@ -285,6 +394,27 @@ impl Engine {
 
     pub fn mode_keys(&self) -> ModeKeys {
         self.modes
+    }
+
+    /// 中英混输里中文候选是否总排在英文词前面（配置 `[general] chinese_first`，缺省关）。
+    /// 关着时拼音「不像话」的输入英文词排第一（`hello` 先英文再 荷兰咯）；开了英文词固定第二。
+    pub fn set_chinese_first(&mut self, on: bool) {
+        self.chinese_first = on;
+    }
+
+    pub fn chinese_first(&self) -> bool {
+        self.chinese_first
+    }
+
+    /// 中文模式下 Shift+字母是否进组句缓冲区（配置 `[general] shift_letter`，缺省关）。
+    /// 开着时大写按小写参与匹配、原样上屏时还原，`Cpan` 与 `cpan` 一样出「C盘」；
+    /// 关着时壳直接把大写字母交给应用，进这里的字母就按它自己的样子匹配。
+    pub fn set_shift_letter_compose(&mut self, on: bool) {
+        self.shift_letter_compose = on;
+    }
+
+    pub fn shift_letter_compose(&self) -> bool {
+        self.shift_letter_compose
     }
 
     pub fn with_learner(mut self, learner: Box<dyn Learner>) -> Self {

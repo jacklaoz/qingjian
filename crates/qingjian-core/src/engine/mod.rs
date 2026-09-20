@@ -5,6 +5,7 @@
 
 mod alignment;
 mod annotation;
+mod aux_code;
 mod commit;
 mod composing;
 mod correcting;
@@ -19,6 +20,7 @@ mod prediction;
 mod privacy;
 mod query;
 mod rescoring;
+mod session;
 mod setup;
 mod statistics;
 mod timings;
@@ -26,12 +28,14 @@ mod translator;
 mod vocabulary;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use qingjian_dictionary::{Dictionary, Match, WordList};
+use qingjian_dictionary::{AuxCodeLookup, CodeTable, Dictionary, Match, WordList};
 
 pub use alignment::Alignment;
 pub use annotation::AnnotationReport;
+pub use aux_code::is_valid_aux_code_key;
 pub use commit::{LastCommit, Transition};
 pub use gloss::{FilledGloss, GlossFiller, NoGlossFiller};
 pub use input_log::{
@@ -39,7 +43,7 @@ pub use input_log::{
     NoInputLogger,
 };
 pub use learning::{Forgotten, Learner, NoLearner};
-pub use marked::{MarkedKind, MarkedSegment};
+pub use marked::{AuxSegment, MarkedKind, MarkedSegment};
 pub use mode_keys::{ModeKeys, QUESTION_PREFIX};
 pub use prediction::{
     CloudWord, NoPredictor, Prediction, PredictionKind, PredictionPolicy, PredictionRequest,
@@ -47,6 +51,7 @@ pub use prediction::{
 };
 
 pub use query::Query;
+pub use session::EngineSession;
 pub use statistics::{BOOKS, Book, NoUsageMeter, Usage, UsageMeter, UsageSummary, book_scale};
 pub use timings::Timings;
 pub use translator::{NoTranslator, Translator};
@@ -54,7 +59,7 @@ pub use vocabulary::{
     FRESH_UNTIL, LevelCount, NoVocabularyTracker, VocabularySummary, VocabularyTracker,
 };
 
-use crate::candidate::{Candidate, CandidateKind, CandidateList, Language, Translation};
+use crate::candidate::{Candidate, CandidateKind, CandidateList, Language};
 use crate::composition::Composition;
 use crate::correction::{self, Correction, TypoCosts, typo};
 use crate::emoji::EmojiTable;
@@ -111,6 +116,13 @@ pub struct Engine {
 
     /// 用户定义的固定位置文本。
     custom_phrases: Vec<crate::CustomPhrase>,
+
+    /// 中英混输时中文候选总在英文词前面（缺省关：拼音不像话的输入英文词排第一，常在中文模式里打英文词的人靠它）。
+    chinese_first: bool,
+
+    /// 中文模式下 Shift+字母进组句缓冲区（配置 `[general] shift_letter = "compose"`，缺省关）。
+    /// 关着由壳直接把大写字母交给应用，Core 这一路就不该收——否则 `Cpan` 这种会被当成拼音。
+    shift_letter_compose: bool,
 
     /// 联想提供方，缺省为 [`NoPredictor`]。
     predictor: Box<dyn Predictor>,
@@ -230,12 +242,45 @@ pub struct Engine {
     /// 注音模式开关，開著時緩衝區裡是注音大千鍵位，查詞前先解成拼音（見 [`crate::zhuyin`]）。
     zhuyin: bool,
 
+    /// 形码码表（五笔）。`Some` 时编码参与查询，按前缀查表（见 [`Engine::query_code`]）。
+    code: Option<CodeTable>,
+
+    /// 拼音侧（全拼 / 双拼 / 注音）参不参与查询，缺省参与。
+    ///
+    /// 与 `code` 组合出三种情形：只有拼音（形码关）、只有形码（拼音关，`[general] scheme = "none"`）、
+    /// **两边都开 = 混输**（编码打全的形码候选在前，见 [`Engine::query_mixed`]）。两个都关着时按拼音走。
+    phonetic: bool,
+
     /// emoji 表，没有就不出 emoji 候选。
     emoji: Option<EmojiTable>,
+
+    /// 辅码态：`None` 是拼音态，`Some` 是辅码态（空串 = 刚敲下触发键、码段还没开始）。
+    /// 码段不进 `composition`：它与拼音分段记账、分段画（见 [`AuxSegment`]）。
+    aux_code: Option<String>,
+
+    /// 辅码总开关（配置项 `[aux_code] enabled`，缺省关）：关着时触发键不进辅码态、纯拼音态也不挂码。
+    aux_enabled: bool,
+
+    /// 候选上是否显示码（配置项 `[general] aux_code_show`，缺省关）：纯拼音态逐候查首条码的短路开关，
+    /// 由壳装配时告知（辅码态不受它管，看码有引导意义）。
+    aux_show: bool,
+
+    /// 进辅码态的触发键，配置项 `[general] aux_code_key`，缺省 [`DEFAULT_AUX_CODE_KEY`]。
+    aux_code_key: char,
+
+    /// 码段删空后是否留在辅码态（配置项 `[general] aux_code_keep_empty`，缺省开）：开 = 删空停在
+    /// 辅码态（`;` 仍在、候选全回），空码段再按一次退格才退出；关 = 删空即回拼音态。
+    aux_keep_empty: bool,
+
+    /// 辅码码表，壳按用户目录 `codes/` 与配置装配；空表示没装码表（辅码态筛不出任何词）。
+    aux_codes: Vec<Arc<dyn AuxCodeLookup>>,
 
     /// 繁体输出：候选出 Core 时换成繁体、上屏时换回简体，缺省不转（见 [`crate::traditional`]）。
     traditional: Traditional,
 }
+
+/// 形码编码最长几位（五笔四码）：混输下超过它的输入只可能是拼音。
+const MAX_CODE_LENGTH: usize = 4;
 
 /// 英文补全最多几条（`compa` → company / compare / …）。
 const ENGLISH_COMPLETIONS: usize = 3;
@@ -288,6 +333,9 @@ pub const EXPLICIT_TRANSITION_WEIGHT: u32 = 2;
 /// 拼音短于这个字母数不联想：一两个字母的意图太模糊，白花一次请求。
 const MIN_PREDICTION_LETTERS: usize = 2;
 
+/// 辅码触发键的缺省值（`[general] aux_code_key`）。
+pub const DEFAULT_AUX_CODE_KEY: char = ';';
+
 /// 随联想请求附带的本地候选条数。
 const PREDICTION_CANDIDATE_HINTS: usize = 5;
 
@@ -322,6 +370,8 @@ impl Engine {
             punctuation: Punctuation::default(),
             full_width_punctuation: true,
             custom_phrases: Vec::new(),
+            chinese_first: false,
+            shift_letter_compose: false,
             predictor: Box::new(NoPredictor),
             language_model: Box::new(NoLanguageModel),
             sentence_scorer: None,
@@ -361,7 +411,15 @@ impl Engine {
             fuzzy: FuzzyRules::default(),
             shuangpin: None,
             zhuyin: false,
+            code: None,
+            phonetic: true,
             emoji: None,
+            aux_code: None,
+            aux_enabled: false,
+            aux_show: false,
+            aux_code_key: DEFAULT_AUX_CODE_KEY,
+            aux_keep_empty: true,
+            aux_codes: Vec::new(),
             traditional: Traditional::default(),
         }
     }

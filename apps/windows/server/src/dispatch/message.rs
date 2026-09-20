@@ -1,7 +1,8 @@
 //! 按消息类型分派：会话开关、按键、轮询、失焦上屏、选区 / 光标矩形 / 中英模式的通知。
 
 use qingjian_platform::protocol::{
-    ClientMessage, Frame, KeyEvent, KeyOutcome, PROTOCOL_VERSION, ServerMessage, SessionId,
+    ClientMessage, Frame, KeyEvent, KeyOutcome, PROTOCOL_VERSION, SESSION_OPENED_SINCE,
+    ServerMessage, SessionId,
 };
 
 use super::Router;
@@ -36,9 +37,17 @@ impl Router {
                     SessionInfo {
                         app,
                         private: false,
+                        protocol,
                     },
                 );
-                None
+                // 按键行为设置回一次，让 DLL 不必自己读配置文件。**只回给会读这条回包的 DLL**：
+                // 更老的 DLL 的 `open` 是只写不读，多回一条会被它当成下一次 `Poll` 的应答而报错，
+                // 那条连接就废了（老 DLL 在没重启的应用里还会活很久）。它们从 `ModeSync` 那一拍
+                // 也能拿到同一份（新字段它直接忽略），只是慢一拍。
+                (protocol >= SESSION_OPENED_SINCE).then(|| ServerMessage::SessionOpened {
+                    session,
+                    input: self.input_settings(),
+                })
             }
             ClientMessage::Key { session, event } => Some(self.handle_key(session, event)),
             ClientMessage::Poll { session } => Some(self.handle_poll(session)),
@@ -83,6 +92,7 @@ impl Router {
             ClientMessage::SyncMode { session } => Some(ServerMessage::ModeSync {
                 session,
                 english: self.take_pending_mode(),
+                input: self.input_settings(),
             }),
             ClientMessage::ImeSwitched { session } => {
                 tracing::debug!(?session, "切成了别的输入法");
@@ -133,13 +143,14 @@ impl Router {
             Effect::Passthrough => (None, KeyOutcome::Passthrough),
         };
         self.poll_prediction();
-        let frame = self.current_frame();
-        self.reconcile_candidates(&frame);
+        // 自绘窗吃未降级的帧；发给 DLL 的那份按老协议降级（见 composed 的 current_frame）
+        let shown = self.self_drawn_frame();
+        self.reconcile_candidates(&shown);
         ServerMessage::KeyResult {
             session,
             outcome,
             commit,
-            frame,
+            frame: self.current_frame(),
         }
     }
 
@@ -152,9 +163,9 @@ impl Router {
         }
         let frame = if self.focused == Some(session) {
             self.poll_prediction();
-            let frame = self.current_frame();
-            self.reconcile_candidates(&frame);
-            frame
+            let shown = self.self_drawn_frame();
+            self.reconcile_candidates(&shown);
+            self.current_frame()
         } else {
             Frame::default()
         };

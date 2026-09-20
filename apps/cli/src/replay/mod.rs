@@ -7,24 +7,33 @@
 
 mod line;
 mod report;
+mod scheme;
 mod tally;
 
 use std::path::Path;
 
 use qingjian_core::{Engine, InputLogEntry, InputSource};
+use qingjian_dictionary::CodeTable;
 
 pub use report::Report;
 
 use line::Line;
+use scheme::SchemeSwitcher;
 use tally::Tally;
 
-/// 跑一遍日志，返回报告。
-pub fn run(engine: &mut Engine, path: &Path, show_misses: usize) -> Result<Report, ReplayError> {
+/// 跑一遍日志，返回报告。`code_table` 是给日志里形码那些行用的（`--wubi` 给的码表）。
+pub fn run(
+    engine: &mut Engine,
+    path: &Path,
+    show_misses: usize,
+    code_table: Option<CodeTable>,
+) -> Result<Report, ReplayError> {
     let text = std::fs::read_to_string(path).map_err(|source| ReplayError::Read {
         path: path.to_owned(),
         source,
     })?;
     let mut report = Report::default();
+    let mut switcher = SchemeSwitcher::new(code_table);
     for (number, raw) in text.lines().enumerate() {
         if raw.trim().is_empty() {
             continue;
@@ -73,7 +82,7 @@ pub fn run(engine: &mut Engine, path: &Path, show_misses: usize) -> Result<Repor
                 {
                     report.predictions_accepted += 1;
                 }
-                replay_commit(engine, &commit, &mut report, show_misses)
+                replay_commit(engine, &mut switcher, &commit, &mut report, show_misses)
             }
         }
     }
@@ -82,19 +91,27 @@ pub fn run(engine: &mut Engine, path: &Path, show_misses: usize) -> Result<Repor
 
 fn replay_commit(
     engine: &mut Engine,
+    switcher: &mut SchemeSwitcher,
     commit: &qingjian_core::CommitEntry,
     report: &mut Report,
     show_misses: usize,
 ) {
+    // 这条日志所属方案回放不了（形码但没给 `--wubi`）：只计数。拿拼音的读法去喂形码的键会算出
+    // 看着像真的、实则无意义的命中率。
+    if !switcher.can_replay(&commit.scheme) {
+        report.skip(commit.source);
+        engine.clear();
+        engine.break_chain();
+        return;
+    }
+    switcher.apply(engine, &commit.scheme);
     let Some(tally) = report.tally_for(commit.source) else {
         // 不是本地排序给出的（云端词、原样上屏……）：只计数；那次上屏的词没法接进上文，断链。
         // 原样上屏照样走一遍 `take_raw`：个人英文词（`gist`）与「这个串不纠」都是从这里学的，不走它回放里的英文候选与纠错就比真实使用差
         report.skip(commit.source);
         if commit.source == InputSource::Raw && !commit.keys.is_empty() {
             engine.set_english_mode(commit.english);
-            engine.set_shuangpin(commit.scheme.parse().ok());
-            engine.set_zhuyin_mode(commit.scheme == "zhuyin");
-            engine.set_input(&commit.keys);
+            feed(engine, &commit.keys);
             engine.take_raw();
         }
         engine.clear();
@@ -110,9 +127,15 @@ fn replay_commit(
         commit.scope.as_str()
     };
     engine.set_english_mode(commit.english);
-    engine.set_shuangpin(commit.scheme.parse().ok());
-    engine.set_zhuyin_mode(commit.scheme == "zhuyin");
-    engine.set_input(scope);
+    // 日志里记的是实际敲键：含触发键的按壳那样逐键重喂（进辅码态、码段进码段），
+    // 否则按当时的作用域喂。进过辅码态时留下拼音段，上屏后拿它量学习闭环。
+    let pinyin = if commit.keys.contains(engine.aux_code_key()) {
+        let (aux, pinyin) = feed(engine, &commit.keys);
+        aux.then_some(pinyin)
+    } else {
+        engine.set_input(scope);
+        None
+    };
     let query = match engine.query() {
         Ok(query) => query,
         Err(_) => {
@@ -168,6 +191,42 @@ fn replay_commit(
         }
         None => engine.clear(),
     }
+    // 辅码选词的闭环：学习记完之后，同样的拼音改成纯拼音输入，这个词该排到首选
+    if let Some(pinyin) = pinyin {
+        report.aux_total += 1;
+        engine.set_input(&pinyin);
+        let top1 = engine
+            .query()
+            .ok()
+            .and_then(|query| query.candidates.items.first().map(|c| c.text.clone()));
+        if top1.as_deref() == Some(commit.text.as_str()) {
+            report.aux_top1 += 1;
+        }
+        engine.clear();
+    }
+}
+
+/// 与壳一样逐个喂键：触发键进辅码态、之后的字母进码段，其余进拼音缓冲区。
+/// 返回 (是否进过辅码态, 进辅码态那一刻的拼音缓冲区)。
+fn feed(engine: &mut Engine, keys: &str) -> (bool, String) {
+    engine.clear();
+    let mut aux = false;
+    let mut pinyin = String::new();
+    for key in keys.chars() {
+        if engine.aux_trigger(key) {
+            engine.enter_aux();
+            aux = true;
+            pinyin = engine.composition().text().to_owned();
+        } else if engine.in_aux() {
+            if !engine.push_aux_code(key) {
+                engine.clear_aux();
+                engine.push(key);
+            }
+        } else {
+            engine.push(key);
+        }
+    }
+    (aux, pinyin)
 }
 
 /// 回放的错误。

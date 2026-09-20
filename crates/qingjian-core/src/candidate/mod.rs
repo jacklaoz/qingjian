@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 pub use furigana::{FuriganaSegment, furigana};
 pub use kind::CandidateKind;
 pub use language::{Language, UnknownLanguage};
-pub use layout::{CandidateLayout, Cell};
+pub use layout::{CandidateLayout, Cell, GRID_ROWS, Grid, MAX_CELL_EMS};
 pub use list::CandidateList;
 pub use part_of_speech::{PartOfSpeech, UnknownPartOfSpeech};
 pub use sense::Sense;
@@ -40,4 +40,10 @@ pub struct Candidate {
 
     /// 学习语言下的译文；查不到或尚未就绪时为 `None`。
     pub translation: Option<Translation>,
+
+    /// 候选带的辅码：筛码时是命中当前码段的那条，没在筛码（纯拼音态、辅码态空码段）时是词的
+    /// 首条码（一词多码、多张码表取第一条）；没装码表或这个词没有码时为 `None`。
+    /// 壳按 `[general] aux_code_show` 决定要不要显示。
+    #[serde(default)]
+    pub aux_code: Option<String>,
 }

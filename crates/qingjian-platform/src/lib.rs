@@ -3,21 +3,21 @@
 //! 这里的类型必须可序列化：macOS / Linux 上 Core 与壳同进程，Windows 上 Core 在独立
 //! Server 进程，同一套类型两边都用。
 
+pub mod code_tables;
 mod config;
+pub mod dirs;
 mod error;
 pub mod extra_dictionaries;
+pub mod logs;
 pub mod protocol;
 pub mod resources;
 
-/// XDG 基础目录，输入法进程与设置界面共用。
-#[cfg(target_os = "linux")]
-pub mod xdg;
-
 pub use config::{
-    AppsConfig, Config, DEFAULT_DOMAINS, DEFAULT_ENGLISH_CANDIDATES_OFF,
-    DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX, DEFAULT_ENGLISH_CANDIDATES_OFF_MACOS,
-    DEFAULT_ENGLISH_CANDIDATES_OFF_WINDOWS, DEFAULT_PAGE_KEYS, DictionariesConfig, GeneralConfig,
-    KeyCombo, LayoutMode, LocalModelConfig, LogLevel, MAX_PAGE_SIZE, Modifiers, PAGE_KEY_OPTIONS,
-    PreeditMode, ShortcutConfig, ThemeMode,
+    AppsConfig, AuxCodeConfig, CandidateRenderer, Config, DEFAULT_DOMAINS,
+    DEFAULT_ENGLISH_CANDIDATES_OFF, DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX,
+    DEFAULT_ENGLISH_CANDIDATES_OFF_MACOS, DEFAULT_ENGLISH_CANDIDATES_OFF_WINDOWS,
+    DEFAULT_PAGE_KEYS, DictionariesConfig, GeneralConfig, KeyCombo, LEARNING_LANGUAGE_OFF,
+    LayoutMode, LocalModelConfig, LogLevel, MAX_PAGE_SIZE, Modifiers, PAGE_KEY_OPTIONS,
+    PreeditMode, Scheme, ShiftLetter, ShortcutConfig, SwitchKey, ThemeMode, scheme_label,
 };
 pub use error::ConfigError;

@@ -41,13 +41,22 @@ pub struct Args {
     #[arg(long)]
     pub glossary: Option<PathBuf>,
 
-    /// 学习语言：en / ja。也可用环境变量 QINGJIAN_LEARNING_LANGUAGE
+    /// 学习语言：en / ja / es。也可用环境变量 QINGJIAN_LEARNING_LANGUAGE
     #[arg(long, env = "QINGJIAN_LEARNING_LANGUAGE", default_value = "en")]
     pub language: String,
 
     /// 附加词库（.qj 或 TSV），可给多个，与主词库一起查
     #[arg(long)]
     pub extra_dict: Vec<PathBuf>,
+
+    /// 辅码码表（.qj，或 `词<TAB>码` 的 TSV），可给多个一起筛。给了之后 `kaifa;kf` 这样的输入
+    /// 按辅码态走：触发键进辅码态、之后的字母按码缩小候选
+    #[arg(long)]
+    pub aux_table: Vec<PathBuf>,
+
+    /// 查码：打印这些词在已装码表里的全部码（配 --aux-table 用），逗号分隔或多次给；查完即退出
+    #[arg(long, value_delimiter = ',')]
+    pub aux_query: Vec<String>,
 
     /// 英文词表路径（中英混输）。缺省：data/generated/english.tsv 存在就用它，否则不启用
     #[arg(long)]
@@ -73,9 +82,17 @@ pub struct Args {
     #[arg(long)]
     pub english_mode: bool,
 
-    /// 双拼方案（xiaohe / ziranma / microsoft / sogou），覆盖配置里的 [general] shuangpin；off 强制全拼
+    /// 打开中文优先（配置 [general] chinese_first = true）：整段是英文词时中文候选排第一、英文第二，评测两种排法用
+    #[arg(long)]
+    pub chinese_first: bool,
+
+    /// 双拼方案（xiaohe / ziranma / microsoft / sogou / abc / xiaolang），覆盖配置里的 [general] shuangpin；off 强制全拼
     #[arg(long)]
     pub shuangpin: Option<String>,
+
+    /// 形码码表（五笔）的 TSV 文件（`词\t编码\t词频`）：给了就用编码查表，不走拼音那一套
+    #[arg(long, value_name = "码表")]
+    pub wubi: Option<PathBuf>,
 
     /// 神经重打分：字级 Transformer 的 .qjm 文件或导出目录（model.safetensors / config.json / vocab.json），整句前几条路径用它重排
     #[arg(long)]

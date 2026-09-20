@@ -1,6 +1,8 @@
 //! Engine 的测试：共用的样例词库、辅助函数与 mock 在这里，用例按主题分文件。
 
+mod aux_code;
 mod cloud;
+mod code;
 mod correction;
 mod custom;
 mod emoji;

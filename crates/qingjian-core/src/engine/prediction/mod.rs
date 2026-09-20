@@ -55,6 +55,10 @@ impl Engine {
         }
         // 不发也要换序号：正在飞的旧结果对应的是上一个输入状态，回来了也不能显示
         self.prediction_sequence += 1;
+        // 辅码态在按码筛词，云端词没有码、进来只会打乱；不发请求，槽位自然收起
+        if self.aux_filter().is_some() {
+            return None;
+        }
         let policy = self.predictor.policy();
         let (before, after) = match surrounding {
             Some(text) => (
@@ -95,13 +99,17 @@ impl Engine {
         if letters < MIN_PREDICTION_LETTERS {
             return None;
         }
-        let (pinyin, syllables, guess) = match segment_longest_prefix(pinyin_source) {
-            Ok((segmentations, tail)) => (
-                query::join_marked(&segmentations, tail),
-                segmentations.first().map_or(0, |s| s.syllables.len()),
-                self.local_guess(&segmentations),
-            ),
-            Err(_) => (pinyin_source.to_owned(), 0, String::new()),
+        let (pinyin, syllables, guess, abbreviated) = match segment_longest_prefix(pinyin_source) {
+            Ok((segmentations, tail)) => {
+                let best = segmentations.first();
+                (
+                    query::join_marked(&segmentations, tail),
+                    best.map_or(0, |s| s.syllables.len()),
+                    self.local_guess(&segmentations),
+                    best.is_some_and(mostly_abbreviated),
+                )
+            }
+            Err(_) => (pinyin_source.to_owned(), 0, String::new(), false),
         };
         if question {
             self.last_question_guess = guess.clone();
@@ -120,7 +128,13 @@ impl Engine {
                 .map(|c| c.text.clone())
                 .collect(),
             guess,
-            max_items: policy.max_items,
+            // 简拼（半数以上音节是缩写）不问词：模型按声母凑出来的大多是生造词（复合语气、符号映射），
+            // 只问整句补全；问字模式的答案不受这条限制（答案本来就对不上问题的拼音）。
+            max_items: if abbreviated && !question {
+                0
+            } else {
+                policy.max_items
+            },
             want_sentence: policy.sentence && !question,
             text: String::new(),
             target_language: String::new(),
@@ -196,6 +210,16 @@ impl Engine {
                         });
                     }
                 }
+                // 云端词与整句不走候选列表，赶不上 query 那边的 apply，这里单独转并记还原表。
+                // 释义那一类不转：它出来的是中文释义，简繁在挂到候选上时才处理
+                if self.last_prediction_kind != PredictionKind::Translate {
+                    for word in &mut prediction.words {
+                        word.text = self.traditional.convert_remember(&word.text);
+                    }
+                    if let Some(sentence) = &mut prediction.sentence {
+                        *sentence = self.traditional.convert_remember(sentence);
+                    }
+                }
                 return Some(prediction);
             }
             tracing::debug!(
@@ -228,10 +252,14 @@ impl Engine {
         });
     }
 
-    /// 用户接受了一条整句补全：作用域内的拼音作废、句子上屏。句子没有拼音，记不了词频与用户词，
+    /// 用户接受一条整句补全：作用域内的拼音作废、句子上屏。句子没有拼音，记不了词频与用户词，
     /// 但按语言模型把它切成词（[`sentence::segment_text`]）逐条记进个人 n-gram，与选整句候选一样；
     /// 标点处断句，句尾是标点时之后的词按句首记。整句退格删光再重打时这些转移一并退回。
     pub fn accept_prediction(&mut self, text: &str) -> String {
+        // 壳送回来的是繁体那份：先换回简体，下面的学习、日志、n-gram 一律看简体
+        let traditional_text = text.to_owned();
+        let restored = self.traditional.restore(text);
+        let text = restored.as_deref().unwrap_or(text);
         let (_, input) = self.whole_scope();
         self.apply_retraction(&input, text);
         self.recording.clear();
@@ -263,7 +291,7 @@ impl Engine {
         }
         let commit = LastCommit {
             text: text.to_owned(),
-            chars: text.chars().count(),
+            chars: traditional_text.chars().count(),
             input,
             chosen: None,
             transitions: std::mem::take(&mut self.recording),
@@ -273,7 +301,7 @@ impl Engine {
             phrase: None,
         };
         self.remember_commit(commit);
-        text.to_owned()
+        traditional_text
     }
 
     /// 云端词学成用户词时用哪套音节。模型给的读音偶有错（我的 → wo di），错读音学进去以后只会按错读音出来，
@@ -320,4 +348,18 @@ impl Engine {
             .into_iter()
             .any(|d| d.lookup_exact(&pattern).iter().any(|hit| hit.text == ch))
     }
+}
+
+/// 半数以上音节是缩写（声母 `f` 或未打完的前缀 `zho`）：这种输入下模型按声母凑词基本只会给生造词，
+/// 只问整句补全。`fhyq` → 符合要求 是缩写，`fuheyaoqiu` 不是，`nih`（两全一缩）也不是。
+fn mostly_abbreviated(segmentation: &Segmentation) -> bool {
+    let total = segmentation.syllables.len();
+    total > 0
+        && segmentation
+            .syllables
+            .iter()
+            .filter(|syllable| !syllable.complete)
+            .count()
+            * 2
+            >= total
 }

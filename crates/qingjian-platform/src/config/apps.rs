@@ -48,20 +48,43 @@ pub const DEFAULT_ENGLISH_CANDIDATES_OFF_WINDOWS: &[&str] = &[
     "neovide.exe",
 ];
 
-/// 缺省不给英文候选的应用（Linux）：**空的**。青简在 Linux 上只做 Wayland，而 Wayland 客户端拿不到
-/// 前台应用的标识（X11 的 `_NET_ACTIVE_WINDOW` / `WM_CLASS` 那条路随 X11 一起排除了），
-/// 所以这份名单无论写什么都不会命中。配置项仍然读得进、不报错，只是永远不生效。
-pub const DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX: &[&str] = &[];
+/// 缺省不给英文候选的应用（Linux，按 fcitx5 的 program 名：X11 是 WM_CLASS，Wayland 是 app_id）。
+/// 终端与代码编辑器同一批理由；匹配大小写不敏感，所以 GNOME/KDE 的大小写变体不用重复列。
+pub const DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX: &[&str] = &[
+    "konsole",
+    "org.kde.konsole",
+    "yakuake",
+    "gnome-terminal-server",
+    "org.gnome.terminal",
+    "xterm",
+    "alacritty",
+    "kitty",
+    "foot",
+    "wezterm",
+    "org.wezfurlong.wezterm",
+    "com.mitchellh.ghostty",
+    "tilix",
+    "xfce4-terminal",
+    "code",
+    "code-oss",
+    "codium",
+    "code-url-handler",
+    "cursor",
+    "jetbrains-*",
+    "dev.zed.zed",
+    "sublime_text",
+    "neovide",
+];
 
-/// 本平台的缺省名单：macOS 上是 bundle identifier，Windows 上是 exe 文件名。
+/// 本平台的缺省名单：macOS 上是 bundle identifier，Windows 上是 exe 文件名，Linux 上是 fcitx5 的 program 名。
 #[cfg(windows)]
 pub const DEFAULT_ENGLISH_CANDIDATES_OFF: &[&str] = DEFAULT_ENGLISH_CANDIDATES_OFF_WINDOWS;
 
-/// 本平台的缺省名单：macOS 上是 bundle identifier，Windows 上是 exe 文件名。
+/// 本平台的缺省名单：macOS 上是 bundle identifier，Windows 上是 exe 文件名，Linux 上是 fcitx5 的 program 名。
 #[cfg(target_os = "macos")]
 pub const DEFAULT_ENGLISH_CANDIDATES_OFF: &[&str] = DEFAULT_ENGLISH_CANDIDATES_OFF_MACOS;
 
-/// 本平台的缺省名单：Linux（与其余未适配的平台）拿不到应用标识，是空的。
+/// 本平台的缺省名单：macOS 上是 bundle identifier，Windows 上是 exe 文件名，Linux 上是 fcitx5 的 program 名。
 #[cfg(not(any(windows, target_os = "macos")))]
 pub const DEFAULT_ENGLISH_CANDIDATES_OFF: &[&str] = DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX;
 
@@ -108,7 +131,10 @@ fn matches_app(pattern: &str, app: &str) -> bool {
     let pattern = pattern.trim();
     match pattern.strip_suffix('*') {
         Some(prefix) => {
-            app.len() >= prefix.len() && app[..prefix.len()].eq_ignore_ascii_case(prefix)
+            // 应用名不保证是 ASCII（Windows 的 exe 文件名、Linux 的 app_id / WM_CLASS 都可以带非 ASCII 字符）：
+            // 按字节切片会切在字符中间 panic，`get` 切不到就是不匹配。
+            app.get(..prefix.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
         }
         None => pattern.eq_ignore_ascii_case(app),
     }
@@ -127,6 +153,18 @@ mod tests {
         assert!(apps.english_candidates_off("COM.MICROSOFT.VSCODE"));
         assert!(!apps.english_candidates_off("com.apple.TextEdit"));
         assert!(!apps.english_candidates_off("com.jetbrains"));
+        assert!(!apps.english_candidates_off(""));
+    }
+
+    #[test]
+    fn linux_list_matches_program_names_case_insensitively() {
+        let apps = AppsConfig::with_english_candidates_off(DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX);
+        assert!(apps.english_candidates_off("Alacritty"));
+        assert!(apps.english_candidates_off("org.kde.konsole"));
+        assert!(apps.english_candidates_off("jetbrains-idea"));
+        assert!(apps.english_candidates_off("code"));
+        assert!(!apps.english_candidates_off("org.mozilla.firefox"));
+        assert!(!apps.english_candidates_off("jetbrains"));
         assert!(!apps.english_candidates_off(""));
     }
 
@@ -154,17 +192,26 @@ mod tests {
             cfg!(target_os = "macos"),
             "macOS 缺省名单按 bundle identifier"
         );
+        assert_eq!(
+            apps.english_candidates_off("konsole"),
+            cfg!(not(any(windows, target_os = "macos"))),
+            "Linux 缺省名单按 fcitx5 的 program 名"
+        );
     }
 
-    /// Linux 拿不到前台应用标识（只做 Wayland），缺省名单必须是空的：留着 macOS 的 bundle identifier
-    /// 只会让人以为这功能在 Linux 上生效。
     #[test]
-    #[cfg(not(any(windows, target_os = "macos")))]
-    fn linux_default_list_is_empty() {
-        let apps = AppsConfig::default();
-        assert!(!apps.has_english_candidates_off());
-        assert!(!apps.english_candidates_off("com.microsoft.VSCode"));
-        assert!(!apps.english_candidates_off("Code.exe"));
+    fn linux_defaults_match_program_names() {
+        let apps = AppsConfig::with_english_candidates_off(DEFAULT_ENGLISH_CANDIDATES_OFF_LINUX);
+        assert!(apps.english_candidates_off("konsole"));
+        assert!(
+            apps.english_candidates_off("ORG.KDE.Konsole"),
+            "匹配大小写不敏感"
+        );
+        assert!(apps.english_candidates_off("jetbrains-idea"), "* 前缀匹配");
+        assert!(apps.english_candidates_off("code"));
+        assert!(!apps.english_candidates_off("kate"));
+        assert!(!apps.english_candidates_off("firefox"));
+        assert!(!apps.english_candidates_off(""));
     }
 
     #[test]
@@ -179,5 +226,19 @@ mod tests {
         assert!(matches_app("com.jetbrains.*", "com.jetbrains.goland"));
         assert!(!matches_app("com.jetbrains.*", "com.jetbrain"));
         assert!(matches_app("*", "anything"));
+    }
+
+    #[test]
+    fn prefix_patterns_survive_multibyte_app_names() {
+        // 名单里有 `*` 前缀项时，多字节应用名的第 prefix.len() 字节可能落在字符中间：
+        // 必须判为不匹配，不许 panic。
+        let apps = AppsConfig::with_english_candidates_off(&["jetbrains-*", "code"]);
+        assert!(!apps.english_candidates_off("日本語入力テスト"));
+        assert!(!apps.english_candidates_off("abc日本語"));
+        assert!(!apps.english_candidates_off("日本語"));
+        assert!(
+            apps.english_candidates_off("jetbrains-idea"),
+            "既有前缀匹配不受影响"
+        );
     }
 }

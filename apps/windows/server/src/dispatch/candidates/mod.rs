@@ -4,7 +4,7 @@ mod sink;
 
 use qingjian_platform::protocol::{Frame, ScreenRect, SessionId};
 
-pub use self::sink::{CandidateSink, NoopSink};
+pub use self::sink::{CandidateSink, NoopSink, RenderSettings};
 use super::Router;
 
 impl Router {
@@ -35,7 +35,8 @@ impl Router {
             return;
         }
         self.last_rect = Some(rect);
-        let frame = self.current_frame();
+        // 自绘窗吃未降级的帧（降级只作用于发给 DLL 的那份）
+        let frame = self.self_drawn_frame();
         self.reconcile_candidates(&frame);
     }
 }

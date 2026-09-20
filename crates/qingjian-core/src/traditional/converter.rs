@@ -67,13 +67,15 @@ impl Traditional {
         self.converter.is_some()
     }
 
-    /// 把一轮候选换成繁体，并记下这一轮的「繁体 → 简体」（上一轮的丢掉）。没开转换时什么都不做。
+    /// 把一轮候选换成繁体，并记下「繁体 → 简体」。没开转换时什么都不做。
+    ///
+    /// 表不在这里清：云端联想词是在 [`crate::Engine::poll_prediction`] 那条路上转的，
+    /// 每轮查询清一次会把它的映射冲掉，之后上屏就还原不回简体。清表在组句边界，见 [`Self::forget`]。
     pub fn apply(&self, list: &mut CandidateList) {
         let Some(converter) = &self.converter else {
             return;
         };
         let mut restore = self.restore.borrow_mut();
-        restore.clear();
         for item in &mut list.items {
             // emoji 候选的 reading 是它跟着的那个中文词（🧑‍💻 跟着 软件），也要换，
             // 不然一屏里混两种字形。中文候选不用 reading，日文假名不是 Emoji 这一类，碰不到
@@ -99,6 +101,27 @@ impl Traditional {
         if let Some(converter) = &self.converter {
             convert_chinese_senses(converter, translation);
         }
+    }
+
+    /// 转一段文本并记下「繁体 → 简体」，给不走候选列表的那条路用（云端联想词与整句，
+    /// 它们在 [`crate::Engine::poll_prediction`] 里出 Core，赶不上 [`Self::apply`]）。
+    /// 没开转换时原样返回、不记表。
+    pub fn convert_remember(&self, text: &str) -> String {
+        let Some(converter) = &self.converter else {
+            return text.to_owned();
+        };
+        let converted = converter.convert(text);
+        if converted != text {
+            self.restore
+                .borrow_mut()
+                .insert(converted.clone(), text.to_owned());
+        }
+        converted
+    }
+
+    /// 清掉还原表，组句边界调用（这一段的候选与联想词都作废了）。
+    pub fn forget(&self) {
+        self.restore.borrow_mut().clear();
     }
 
     /// 繁体候选对应的简体原文；这一轮没换过它（或压根没开转换）时为 `None`。
@@ -150,6 +173,7 @@ mod tests {
                     syllables: Vec::new(),
                     reading: None,
                     translation: None,
+                    aux_code: None,
                 })
                 .collect(),
         }
@@ -215,6 +239,7 @@ mod tests {
                     syllables: Vec::new(),
                     reading: Some("软件".to_owned()),
                     translation: None,
+                    aux_code: None,
                 },
                 Candidate {
                     text: "软件".to_owned(),
@@ -222,6 +247,7 @@ mod tests {
                     syllables: Vec::new(),
                     reading: None,
                     translation: Some(Translation::new(Language::Chinese, vec![sense("软件工程")])),
+                    aux_code: None,
                 },
                 Candidate {
                     text: "开发".to_owned(),
@@ -229,6 +255,7 @@ mod tests {
                     syllables: Vec::new(),
                     reading: None,
                     translation: Some(Translation::new(Language::English, vec![sense("软件")])),
+                    aux_code: None,
                 },
             ],
         };
@@ -245,13 +272,25 @@ mod tests {
         );
     }
 
-    /// 还原表只保留最近一轮：上一轮的候选早就不在候选窗口里了。
+    /// 还原表跨轮累积，清表在组句边界：同一段组句里云端词可能在上一轮转的，这一轮上屏还要还原得回去。
     #[test]
-    fn restore_table_keeps_only_the_last_round() {
+    fn restore_table_spans_rounds_until_forget() {
         let traditional = Traditional::new(TraditionalVariant::Taiwan);
         traditional.apply(&mut list(&["软件"]));
         traditional.apply(&mut list(&["内存"]));
-        assert_eq!(traditional.restore("軟體"), None);
+        assert_eq!(traditional.restore("軟體").as_deref(), Some("软件"));
         assert_eq!(traditional.restore("記憶體").as_deref(), Some("内存"));
+
+        traditional.forget();
+        assert_eq!(traditional.restore("軟體"), None);
+        assert_eq!(traditional.restore("記憶體"), None);
+    }
+
+    /// 不走候选列表的那条路：转了也要记表，还原得回去。
+    #[test]
+    fn convert_remember_records_the_mapping() {
+        let traditional = Traditional::new(TraditionalVariant::Taiwan);
+        assert_eq!(traditional.convert_remember("软件"), "軟體");
+        assert_eq!(traditional.restore("軟體").as_deref(), Some("软件"));
     }
 }

@@ -169,5 +169,5 @@ MarkedSegment{text, kind}     preedit 分段：普通 / 纠错删除线 / 英文
 `apps/windows/server/src/dispatch/key/input.rs` 的文件头写着「分流规则与 macOS 壳的 `handle_text` / `handle_command` 对齐」。
 
 这两处重复各自的收口方案：显示面是 `crates/qingjian-render`（一帧 + 主题 → 位图，各平台只贴图，
-还在分支 `renderer-spike` 上，见 [notes/crate-notes.md](../notes/crate-notes.md)）；
-按键分流面还没有收口方案，Linux 是第三份，见 [plan/linux_plan.md](../plan/linux_plan.md)。
+见 [notes/crate-notes.md](../notes/crate-notes.md)）；按键分流面还没有收口方案，
+Linux Server 是第三份，见 [notes/linux-fcitx5.md](../notes/linux-fcitx5.md)。

@@ -32,11 +32,20 @@ pub enum Setting {
     /// `[general] theme`，弹出菜单。
     Theme,
 
+    /// `[general] renderer`，弹出菜单：青简渲染器 / 系统绘制。
+    Renderer,
+
+    /// `[general] font`，字体列表选中的字族名；「系统默认」为系统字体。
+    Font,
+
     /// `[shortcut] expression`，弹出菜单 v / u / i。
     ExpressionKey,
 
     /// `[shortcut] question`，弹出菜单 v / u / i。
     QuestionKey,
+
+    /// `[shortcut] question_mark`，勾选框：没在组句时敲 `?` 也进问字。
+    QuestionMark,
 
     /// `[fuzzy]` 里的一条规则，值是 [`FuzzyRules::NAMES`] 的下标。
     Fuzzy(usize),
@@ -71,6 +80,9 @@ pub enum Setting {
     /// 关闭编辑表单。
     CancelPhraseEdit,
 
+    /// `[general] system_text_replacements`，勾选框：系统的文本替换并进自定义短语。
+    SystemTextReplacements,
+
     /// `[predict] base_url`。
     BaseUrl,
 
@@ -91,6 +103,15 @@ pub enum Setting {
 
     /// `[general] english_candidates`，勾选框。
     EnglishCandidates,
+
+    /// `[general] chinese_first`，勾选框：中英混输时中文候选排在英文词前。
+    ChineseFirst,
+
+    /// `[general] horizontal_grid`，勾选框：横排时上 / 下键展开成多行矩阵。
+    HorizontalGrid,
+
+    /// `[general] shift_letter`，勾选框：中文模式下 Shift+字母进组句（勾上是 compose，否则 passthrough）。
+    ShiftLetter,
 
     /// `[shortcut] translation`，快捷键录制按钮（只记修饰键）。
     TranslationKeys,
@@ -113,8 +134,11 @@ pub enum Setting {
     /// 第 N 本附加词库的「移除」按钮。
     DictionaryRemove(usize),
 
-    /// `[general] shuangpin`，弹出菜单：关 + 四套方案。
-    Shuangpin,
+    /// `[general] scheme`，弹出菜单：全拼 + 五套双拼 + 大千注音 + 关。
+    Scheme,
+
+    /// `[general] wubi`，勾选框：勾上是五笔（86 版）。与拼音同时开着就是混输。
+    Wubi,
 
     /// `[general] traditional`，弹出菜单：简体 + 三档繁体。
     Traditional,
@@ -128,6 +152,9 @@ pub enum Setting {
     /// 「关于」页「复制诊断信息」按钮。
     CopyDiagnostics,
 
+    /// 「关于」「高级」页「打包日志到桌面」按钮。
+    ExportLogs,
+
     /// `[predict] slots`，弹出菜单 0–4：第一页末尾留给云端词的格数。
     CloudSlots,
 
@@ -139,6 +166,9 @@ pub enum Setting {
 
     /// `[general] input_log`，勾选框。
     InputLog,
+
+    /// 学习输入习惯开关。
+    Learning,
 
     /// 「高级」页「清空输入日志」按钮。
     ClearInputLog,
@@ -162,6 +192,7 @@ impl Setting {
             Self::Theme => 4,
             Self::ExpressionKey => 5,
             Self::QuestionKey => 6,
+            Self::QuestionMark => 41,
             Self::CloudEnabled => 7,
             Self::BaseUrl => 8,
             Self::Model => 9,
@@ -170,19 +201,25 @@ impl Setting {
             Self::Layout => 12,
             Self::Preedit => 13,
             Self::EnglishCandidates => 14,
+            Self::ChineseFirst => 42,
+            Self::ShiftLetter => 50,
+            Self::HorizontalGrid => 51,
             Self::TranslationKeys => 15,
             Self::TranslationSecondKeys => 16,
             Self::TranslateSelectionKeys => 17,
             Self::ResetShortcuts => 18,
             Self::ImportDictionary => 19,
-            Self::Shuangpin => 20,
+            Self::Scheme => 20,
+            Self::Traditional => 47,
             Self::VerboseLog => 21,
             Self::OpenLogDirectory => 22,
             Self::CopyDiagnostics => 23,
+            Self::ExportLogs => 48,
             Self::CloudSlots => 24,
             Self::EnglishCandidatesOffInApps => 25,
             Self::DeleteCandidateKeys => 26,
             Self::InputLog => 27,
+            Self::Learning => 45,
             Self::ClearInputLog => 28,
             Self::TestCloud => 29,
             Self::OpenWebsite => 30,
@@ -196,7 +233,10 @@ impl Setting {
             Self::NewPhrase => 38,
             Self::EditPhrase => 39,
             Self::CancelPhraseEdit => 40,
-            Self::Traditional => 41,
+            Self::Wubi => 49,
+            Self::Renderer => 43,
+            Self::Font => 44,
+            Self::SystemTextReplacements => 46,
             Self::Fuzzy(index) => FUZZY_TAG_BASE + index as NSInteger,
             Self::DictionaryEnabled(index) => DICTIONARY_ENABLED_TAG_BASE + index as NSInteger,
             Self::DictionaryRemove(index) => DICTIONARY_REMOVE_TAG_BASE + index as NSInteger,
@@ -209,8 +249,11 @@ impl Setting {
             2 => Self::PageSize,
             3 => Self::PageKeys,
             4 => Self::Theme,
+            43 => Self::Renderer,
+            44 => Self::Font,
             5 => Self::ExpressionKey,
             6 => Self::QuestionKey,
+            41 => Self::QuestionMark,
             7 => Self::CloudEnabled,
             8 => Self::BaseUrl,
             9 => Self::Model,
@@ -219,19 +262,26 @@ impl Setting {
             12 => Self::Layout,
             13 => Self::Preedit,
             14 => Self::EnglishCandidates,
+            42 => Self::ChineseFirst,
+            50 => Self::ShiftLetter,
+            51 => Self::HorizontalGrid,
             15 => Self::TranslationKeys,
             16 => Self::TranslationSecondKeys,
             17 => Self::TranslateSelectionKeys,
             18 => Self::ResetShortcuts,
             19 => Self::ImportDictionary,
-            20 => Self::Shuangpin,
+            20 => Self::Scheme,
+            49 => Self::Wubi,
+            47 => Self::Traditional,
             21 => Self::VerboseLog,
             22 => Self::OpenLogDirectory,
             23 => Self::CopyDiagnostics,
+            48 => Self::ExportLogs,
             24 => Self::CloudSlots,
             25 => Self::EnglishCandidatesOffInApps,
             26 => Self::DeleteCandidateKeys,
             27 => Self::InputLog,
+            45 => Self::Learning,
             28 => Self::ClearInputLog,
             29 => Self::TestCloud,
             30 => Self::OpenWebsite,
@@ -245,7 +295,7 @@ impl Setting {
             38 => Self::NewPhrase,
             39 => Self::EditPhrase,
             40 => Self::CancelPhraseEdit,
-            41 => Self::Traditional,
+            46 => Self::SystemTextReplacements,
             _ if tag >= DICTIONARY_REMOVE_TAG_BASE => {
                 let index = usize::try_from(tag - DICTIONARY_REMOVE_TAG_BASE).ok()?;
                 (index < MAX_DICTIONARIES).then_some(Self::DictionaryRemove(index))?
@@ -273,6 +323,8 @@ mod tests {
             Setting::PageSize,
             Setting::PageKeys,
             Setting::Theme,
+            Setting::Renderer,
+            Setting::Font,
             Setting::ExpressionKey,
             Setting::QuestionKey,
             Setting::CloudEnabled,
@@ -289,15 +341,20 @@ mod tests {
             Setting::TranslateSelectionKeys,
             Setting::ResetShortcuts,
             Setting::ImportDictionary,
-            Setting::Shuangpin,
+            Setting::Scheme,
+            Setting::Wubi,
             Setting::Traditional,
             Setting::VerboseLog,
             Setting::OpenLogDirectory,
             Setting::CopyDiagnostics,
+            Setting::ExportLogs,
             Setting::CloudSlots,
             Setting::EnglishCandidatesOffInApps,
             Setting::DeleteCandidateKeys,
             Setting::InputLog,
+            Setting::SystemTextReplacements,
+            Setting::ShiftLetter,
+            Setting::HorizontalGrid,
             Setting::ClearInputLog,
             Setting::TestCloud,
             Setting::OpenWebsite,
