@@ -292,3 +292,16 @@ Unix socket 用共享长度前缀与 Frame（当前公共版本 6）；插件复
 线上类型（`LinuxEvent` / `Capabilities` / `DisplayIdentity` / `DisplayAcknowledged` / `LINUX_UI_PROTOCOL` / `socket_path`）
 在 `qingjian_platform::protocol::linux`，不在 Server crate 里——与 Windows 的 TSF DLL 同一条理由：
 **前端不能因为要用协议类型就拖进 Engine 的依赖树**（Server 依赖 core / dictionary / lm / neural，前端一个都不要）。
+
+## apps/linux/ibus
+
+第二个前端（IBus），与 `fcitx5` 平级：同一个 Server、同一套协议。**骨架阶段**——socket 客户端、
+按键翻译、`--check` 端到端自检已经通，IBus 的 D-Bus 层（组件注册、`ProcessKeyEvent`、面板）还没接。
+
+- `client/`：一条 Unix socket，一问一答。**哪些消息有回包是协议的一部分**——`OpenSession` 与 `LinuxEvent` 有，
+  `CloseSession` 与展示回执没有；读多了卡住，读少了下一次答复串位。`Shared` 是 `Arc<Mutex<Option<Connection>>>`：
+  锁毒化后取回数据接着用，出错就扔掉连接下次重连（会话要重开）。超时 200 ms，与 Fcitx5 插件一致。
+- `key/`：keysym + X11 修饰键掩码 → `KeyEvent`。**这张表与 `apps/linux/fcitx5/src/key/mapping.cpp` 必须一字不差**，
+  两个前端喂同一个 Server 同一套 `[shortcut]`，不一致同一个键在两个框架下行为就不同。
+  最容易错的是 Shift+数字：X11 给的 keysym 是 `@`，而译词 / 删候选快捷键按物理数字行认，要折回 `0x32`，`character` 仍留 `@`。
+- `--check nihao`：连 Server、开会话、报能力与焦点、逐键发上去、打印回来的候选；Server 没起着时直接报连不上。

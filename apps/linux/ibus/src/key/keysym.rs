@@ -1,8 +1,9 @@
 //! X11 keysym：常量与「这个 keysym 敲出来是哪个字符」。
 //!
-//! IBus 的 `ProcessKeyEvent` 直接给 keysym，方案 A 的 Wayland 键盘抓取给的是 keycode，
-//! 由 xkbcommon 翻成同一套 keysym，所以两条路共用这一份表。取值来自 X11 的 `keysymdef.h`，
+//! IBus 的 `ProcessKeyEvent` 直接给 keysym。取值来自 X11 的 `keysymdef.h`，
 //! 是三十年没动过的公开常量，不值得为它引一个依赖。
+//!
+//! 这里只列 [`super::mapping`] 用得到的那些：功能键区、小键盘、两个 Shift。
 
 /// 功能键区（`0xff00` 起）。
 pub const BACKSPACE: u32 = 0xff08;
@@ -22,6 +23,10 @@ pub const DELETE: u32 = 0xffff;
 /// Shift + Tab：X11 不是「Tab 加 Shift 修饰键」，而是另一个 keysym。
 pub const ISO_LEFT_TAB: u32 = 0xfe20;
 
+/// 两个 Shift 键本身：中 / 英切换要认它的按下与抬起（`[shortcut] switch_mode`）。
+pub const SHIFT_L: u32 = 0xffe1;
+pub const SHIFT_R: u32 = 0xffe2;
+
 /// 小键盘：NumLock 灭着时方向 / 编辑键走这一段，亮着时 `KP_0`–`KP_9` 出数字。
 pub const KP_ENTER: u32 = 0xff8d;
 pub const KP_HOME: u32 = 0xff95;
@@ -32,7 +37,19 @@ pub const KP_DOWN: u32 = 0xff99;
 pub const KP_PAGE_UP: u32 = 0xff9a;
 pub const KP_PAGE_DOWN: u32 = 0xff9b;
 pub const KP_END: u32 = 0xff9c;
+pub const KP_BEGIN: u32 = 0xff9d;
+pub const KP_INSERT: u32 = 0xff9e;
 pub const KP_DELETE: u32 = 0xff9f;
+
+/// 小键盘的运算符键。
+pub const KP_MULTIPLY: u32 = 0xffaa;
+pub const KP_ADD: u32 = 0xffab;
+pub const KP_SEPARATOR: u32 = 0xffac;
+pub const KP_SUBTRACT: u32 = 0xffad;
+pub const KP_DECIMAL: u32 = 0xffae;
+pub const KP_DIVIDE: u32 = 0xffaf;
+
+/// 小键盘数字段。
 pub const KP_0: u32 = 0xffb0;
 pub const KP_9: u32 = 0xffb9;
 
@@ -45,7 +62,7 @@ const UNICODE_MAX: u32 = 0x0010_ffff;
 /// 这个 keysym 敲出来是哪个可见字符；功能键与修饰键没有字符，是 `None`。
 ///
 /// 三段来源：Latin-1 段（keysym 就是码点）、Unicode 段（`0x01000000 | 码点`）、小键盘数字。
-/// 控制字符不返回——Core 只认可见字符，功能键走 [`super::FunctionKey`]。
+/// 控制字符不返回——Server 那边 `KeyEvent::character` 只认可见字符，功能键靠 `virtual_key`。
 pub fn to_char(keysym: u32) -> Option<char> {
     if (KP_0..=KP_9).contains(&keysym) {
         return char::from_u32('0' as u32 + (keysym - KP_0));
