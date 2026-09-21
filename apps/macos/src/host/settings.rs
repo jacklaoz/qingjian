@@ -3,6 +3,7 @@
 use super::diagnostics::{copy_to_pasteboard, open_with_system};
 use super::*;
 use crate::preferences::DEFAULT_FONT_LABEL;
+use qingjian_core::TraditionalVariant;
 use qingjian_platform::ShiftLetter;
 
 impl Host {
