@@ -232,6 +232,9 @@ preedit = "both"
 # 英文模式（Caps Lock 亮着）是否给英文候选：Tab 或方向键选词，空格、回车、标点仍原样上屏敲的字母；false 就是纯直通
 english_candidates = true
 
+# 候选里出不出 emoji 与符号：both 两样都出（缺省）/ emoji 只要 emoji（笑 → 😄）/ symbol 只要符号（duigou → ✔）/ off 都不要
+# emoji 紧跟在对应的词后面，符号按敲的拼音出、固定在第 2 位
+extras = "both"
 # 繁体输出：off 简体 / taiwan 台湾正体（连用语一起换，软件 → 軟體、内存 → 記憶體）/ hongkong 香港繁体 / standard 通用繁体（只换字形）
 # 候选窗口里看到的就是转换后的字；词库与学习数据始终是简体，改回 off 之前学到的词照样在。老配置里写 true 的按台湾正体读
 traditional = "off"

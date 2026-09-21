@@ -156,6 +156,7 @@ fn main() {
             .into_iter()
             .filter_map(|name| asset(&root, &format!("emoji/{name}")))
             .collect(),
+        symbols: asset(&root, "symbol/symbol-zh.tsv"),
         language_model: LanguageModelFiles::find(&root.join("data/generated")),
         bundled_dicts_dir: bundled_dicts_dir.clone(),
         dictionaries: config.dictionaries.clone(),
@@ -176,6 +177,7 @@ fn main() {
     engine.set_fuzzy(config.fuzzy);
     // 拼音侧与形码侧在 `configure_code_table` 里一起装配（双拼 / 注音 / 混输都在那）
     engine.set_traditional(config.general.traditional);
+    engine.set_extras(config.general.extras);
     engine.set_learning(config.general.learning);
     engine.set_mode_keys(config.shortcut.mode);
     engine.set_aux_code_key(config.general.aux_code_key(), config.general.page_keys());

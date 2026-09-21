@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use clap::Parser;
-use qingjian_core::{EmojiTable, Engine, FuzzyRules, Language};
+use qingjian_core::{EmojiTable, Engine, FuzzyRules, Language, SymbolTable};
 use qingjian_dictionary::{AuxCodeLookup, AuxCodeTable, CodeTable, Dictionary, WordList};
 use qingjian_learning::FrequencyLearner;
 use qingjian_lm::BigramModel;
@@ -187,6 +187,13 @@ fn build_engine(args: &Args) -> Result<Engine, CliError> {
         );
         engine = engine.with_emoji(table);
     }
+    // 符号表随仓库提供：按输入码查（`duigou` → ✔），没有就不出符号候选
+    let symbol_path = std::path::PathBuf::from("assets/symbol/symbol-zh.tsv");
+    if symbol_path.is_file() {
+        let table = SymbolTable::from_path(&symbol_path)?;
+        tracing::info!(codes = table.len(), "符号表已加载");
+        engine = engine.with_symbols(table);
+    }
     // 语言模型可选：没有就退化成一元词频整句；打包过的 lm.qj 优先
     let packed = std::path::PathBuf::from("data/generated/lm.qj");
     let unigram = std::path::PathBuf::from("data/generated/lm-unigram.tsv");
@@ -253,6 +260,7 @@ fn build_engine(args: &Args) -> Result<Engine, CliError> {
         tracing::info!(rules = ?config.fuzzy, "模糊音已启用");
     }
     engine.set_traditional(config.general.traditional);
+    engine.set_extras(config.general.extras);
     engine.set_fuzzy(config.fuzzy);
     engine.set_mode_keys(config.shortcut.mode);
     // `--shuangpin` 现在写的是 [general] scheme（同一个维度的旧键已经并进去），off 就是全拼

@@ -11,6 +11,7 @@ mod learning;
 mod lookup;
 mod privacy;
 mod shuangpin;
+mod symbol;
 mod traditional;
 mod zhuyin;
 

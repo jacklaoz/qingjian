@@ -1,0 +1,93 @@
+# 符号表：输入码（全拼、不带声调）\t名字\t符号 符号 …
+# 人工维护。收录标准两条：
+#   1. **按名字找得到、键盘上打不出来**。键盘直接有的（逗号句号问号）不收，
+#      全角标点走 [general] full_width_punctuation 那条路，不在这里重复。
+#   2. **输入码不能是极常用的词**。符号插在候选第 2 位，`yinwei` → ∵、`fen` → ¢ 这种
+#      会让正常打字每次多看一条噪音；宁可打不出也不要挡路。改表之后按 docs/contributing.md
+#      跑一次 apps/cli 的回放，看首选率有没有掉。
+# 同一个名字有两种拼法（略 lve / lue）写成两行，代码里不做拼音变体推导。
+
+# 标点
+shenglvehao	省略号	…… …
+shengluehao	省略号	…… …
+pozhehao	破折号	—— —
+jiangehao	间隔号	·
+shuminghao	书名号	《》 〈〉
+danyinhao	单引号	‘’ 「」
+shuangyinhao	双引号	“” 『』
+fangkuohao	方括号	【】 〔〕 ［］
+huakuohao	花括号	｛｝ {}
+yuankuohao	圆括号	（） ()
+
+# 数学
+jiahao	加号	＋ ± ➕
+jianhao	减号	－ − ∓
+chenghao	乘号	× ∗ ⋅
+chuhao	除号	÷ ∕
+budengyu	不等于	≠ ≢
+yueyudeng	约等于	≈ ≅ ∼
+xiaoyudeng	小于等于	≤ ≪
+dayudeng	大于等于	≥ ≫
+wuqiongda	无穷大	∞
+genhao	根号	√ ∛ ∜
+qiuhe	求和	∑
+jifen	积分	∫ ∬ ∮
+zhengbili	正比	∝
+pinghang	平行	∥
+chuizhi	垂直	⊥
+baifenhao	百分号	％ ‰ ‱
+sheshidu	摄氏度	℃
+huashidu	华氏度	℉
+
+# 箭头
+jiantou	箭头	→ ← ↑ ↓
+youjiantou	右箭头	→ ⇒ ➡ ⟶
+zuojiantou	左箭头	← ⇐ ⬅ ⟵
+shangjiantou	上箭头	↑ ⇑ ⬆
+xiajiantou	下箭头	↓ ⇓ ⬇
+shuangxiangjiantou	双向箭头	↔ ⇔ ⟷
+xiejiantou	斜箭头	↗ ↘ ↖ ↙
+
+# 序号
+yuanquanshuzi	圆圈数字	① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩
+kuohaoshuzi	括号数字	⑴ ⑵ ⑶ ⑷ ⑸ ⑹ ⑺ ⑻ ⑼ ⑽
+luomashuzi	罗马数字	Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ Ⅶ Ⅷ Ⅸ Ⅹ
+
+# 货币
+renminbi	人民币	￥ ¥
+meiyuanfuhao	美元符号	＄ $
+ouyuanfuhao	欧元符号	€
+riyuanfuhao	日元符号	￥ 円
+yingbangfuhao	英镑符号	£
+hanyuanfuhao	韩元符号	₩
+
+# 图形
+shixinyuan	实心圆	● ⬤ ⚫
+kongxinyuan	空心圆	○ ◯ ⚪
+shixinfangkuai	实心方块	■ ◼ ▪
+kongxinfangkuai	空心方块	□ ◻ ▫
+lingxing	菱形	◆ ◇ ♦
+xingxing	星星	★ ☆ ✦ ✧
+duigou	对勾	✔ ✓ ☑
+chahao	叉号	✘ ✗ ✕ ☒
+shizihao	十字号	✚ ✛ ✜
+
+# 常用标记
+banquanfuhao	版权符号	© ℗
+zhucefuhao	注册符号	®
+shangbiaofuhao	商标符号	™
+haomafuhao	号码符号	№ ＃
+dianhuafuhao	电话符号	☎ ✆
+youjianfuhao	邮件符号	✉
+jinggaofuhao	警告符号	⚠ ⚡
+canzhaofuhao	参照符号	※ ‖
+
+# 希腊字母：只收按拉丁名敲的，`pai` / `mu` 这种与常用音节撞的不收
+alpha	希腊字母 α	α Α
+beta	希腊字母 β	β Β
+gamma	希腊字母 γ	γ Γ
+delta	希腊字母 δ	δ Δ
+theta	希腊字母 θ	θ Θ
+lambda	希腊字母 λ	λ Λ
+sigma	希腊字母 σ	σ Σ
+omega	希腊字母 ω	ω Ω

@@ -220,6 +220,23 @@ impl Engine {
         self
     }
 
+    /// 装符号表（按输入码查，`duigou` → ✔）。没装就不出符号候选。
+    pub fn with_symbols(mut self, table: SymbolTable) -> Self {
+        self.symbols = Some(table);
+        self
+    }
+
+    /// 候选里出不出 emoji 与符号（配置项 `[general] extras`）。表装没装是一回事，出不出是另一回事：
+    /// 关掉之后表还在，改回来不用重装引擎。
+    pub fn set_extras(&mut self, extras: ExtraCandidates) {
+        self.extras = extras;
+    }
+
+    /// 当前的 emoji / 符号开关。
+    pub fn extras(&self) -> ExtraCandidates {
+        self.extras
+    }
+
     pub fn with_fuzzy(mut self, rules: FuzzyRules) -> Self {
         self.fuzzy = rules;
         self

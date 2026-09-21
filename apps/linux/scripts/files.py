@@ -98,7 +98,7 @@ def main():
     if options.service:
         files[config / 'systemd/user/qingjian-server.service'] = Path(options.service)
     resources = prefix / 'share/qingjian/resources'
-    for kind in ('sample', 'glossary', 'levels', 'emoji'):
+    for kind in ('sample', 'glossary', 'levels', 'emoji', 'symbol'):
         for source in (root / 'assets' / kind).rglob('*'):
             if source.is_file():
                 files[resources / source.relative_to(root)] = source

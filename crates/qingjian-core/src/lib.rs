@@ -20,14 +20,15 @@ pub mod sentence;
 pub mod shortcut;
 pub mod shuangpin;
 pub mod storage;
+pub mod symbol;
 pub mod traditional;
 pub mod zhuyin;
 
 pub use custom_phrase::CustomPhrase;
 
 pub use candidate::{
-    Candidate, CandidateKind, CandidateLayout, CandidateList, Cell, GRID_ROWS, Grid, Language,
-    MAX_CELL_EMS, PartOfSpeech, Sense, Translation,
+    Candidate, CandidateKind, CandidateLayout, CandidateList, Cell, ExtraCandidates, GRID_ROWS,
+    Grid, Language, MAX_CELL_EMS, PartOfSpeech, Sense, Translation,
 };
 pub use composition::Composition;
 pub use correction::Correction;
@@ -48,4 +49,5 @@ pub use parser::{ParseError, Segmentation};
 pub use punctuation::Punctuation;
 pub use qingjian_dictionary as dictionary;
 pub use shuangpin::Scheme as ShuangpinScheme;
+pub use symbol::{SymbolEntry, SymbolTable};
 pub use traditional::{Traditional, TraditionalVariant};

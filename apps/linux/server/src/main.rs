@@ -56,6 +56,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .into_iter()
             .filter_map(|n| paths::asset(&root, n))
             .collect(),
+        symbols: paths::asset(&root, "symbol/symbol-zh.tsv"),
         language_model: LanguageModelFiles::find(&root.join("data/generated")),
         bundled_dicts_dir: Some(root.join("data/generated/dicts")),
         dictionaries: config.dictionaries.clone(),
@@ -79,6 +80,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     engine.set_shift_letter_compose(config.general.shift_letter.compose());
     engine.set_learning(config.general.learning);
     engine.set_chinese_first(config.general.chinese_first);
+    engine.set_extras(config.general.extras);
     engine.set_mode_keys(config.shortcut.mode);
     engine
         .set_custom_phrases(config.custom_phrases.clone())
