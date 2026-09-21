@@ -70,6 +70,10 @@
   两个跑编译的钩子按 `uname` 划平台范围：**非 Apple 平台排除 `qingjian-macos`**（IMK 壳依赖 objc2，在别的平台上是硬 `compile_error!`，
   排除不掉就整条命令失败），与 [ci.yml](../.github/workflows/ci.yml) 三个 job 的划分一致；Windows 上 pre-push 另设 `QINGJIAN_UIACCESS=0`
   （Server 的 build.rs 嵌 uiAccess manifest，没签名的测试二进制起不来，os error 740）。
+- **在 Linux / Windows 上改 macOS 壳**：排除之后等于盲改——曾有一个缺 import 的错误在 Linux 上提交、好几笔都没人发现。
+  `rustup target add aarch64-apple-darwin` 一次，之后 pre-commit 在「这次提交碰了 `apps/macos/`、`crates/` 或依赖」时
+  会对 darwin 目标跑一遍 clippy（只做类型检查、不链接，与 CI 的 macOS job 同一道门）；没装这个 target 的人流程不变。
+  原理与手动跑法见 [notes/crate-notes.md](notes/crate-notes.md) 的 apps/macos 一节。
 - 排序 / 整句 / 纠错的改动先跑 `apps/cli` 再合。
 
 ## CI 与发版
