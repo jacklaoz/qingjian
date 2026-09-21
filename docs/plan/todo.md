@@ -125,7 +125,7 @@
   - 按应用设置：IBus 这条路上还没拿到应用标识，`OpenSession` 的 `app` 报 `None`，`[apps]` 分节对它不生效
   - `focus_out` 的 `client_preedit` 现在一律报 `false`（缓冲原样上屏，同 IBus 老版本的行为），
     应用自己画 preedit 的场合要在真机上确认该不该报 `true`
-  - 安装脚本按 `XMODIFIERS` / 已装框架分支安装；Server 的启动策略（两个前端共用一个，现在手动起）
+  - ~~安装脚本按已装框架分支安装、Server 的启动策略~~：`install.sh --frontend auto` 已做，systemd 用户单元 `qingjian-server.service` 随装（`--enable-service` 顺手 enable），两个前端共用一个 Server
   - `[general] preedit` 三档在 IBus 面板下逐个真机验（它的面板能力比 fcitx5 弱），坑见 [notes/linux-bringup.md](../notes/linux-bringup.md)
 
 ## 四、其他输入方案

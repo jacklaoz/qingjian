@@ -9,5 +9,10 @@ while (($#)); do
     *) echo "未知参数：$1" >&2; exit 2 ;;
   esac
 done
+# 先停服务再删文件：单元文件被删之后 systemd 就不认这个名字了，停不掉的 Server 会一直占着 socket
+if command -v systemctl >/dev/null 2>&1 && systemctl --user list-unit-files qingjian-server.service >/dev/null 2>&1; then
+  systemctl --user disable --now qingjian-server.service 2>/dev/null || true
+fi
 python3 "$(dirname -- "${BASH_SOURCE[0]}")/files.py" uninstall "$install_prefix"
-echo '卸载完成；请手动结束 Server 并重启 Fcitx5，用户数据已保留。'
+command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload || true
+echo '卸载完成；用户数据已保留。fcitx5 / IBus 各自重启一下（ibus restart）才会忘掉青简。'

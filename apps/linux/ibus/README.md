@@ -16,7 +16,7 @@
 | D-Bus 层（组件注册、按键、焦点、重置、面板三样） | 通了，**对着真 ibus-daemon 验过** |
 | 密码框 / 私密输入（`SetContentType`） | 代码有，**没验过**：测试里 IBus 一次都没调它 |
 | 按应用设置（`[apps]`） | 没有：IBus 这条路上还没找到拿应用标识的办法，`OpenSession` 的 `app` 报的是 `None` |
-| 安装脚本认框架、Server 自启 | 没做，见 [todo](../../../docs/plan/todo.md) |
+| 安装脚本认框架、Server 自启 | 通了：`scripts/install.sh --frontend auto` 装能装的那几支，systemd 用户单元随装 |
 
 真机上的坑记在 [`docs/notes/linux-bringup.md`](../../../docs/notes/linux-bringup.md)。
 

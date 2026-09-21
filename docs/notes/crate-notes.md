@@ -293,6 +293,12 @@ Unix socket 用共享长度前缀与 Frame（当前公共版本 6）；插件复
 在 `qingjian_platform::protocol::linux`，不在 Server crate 里——与 Windows 的 TSF DLL 同一条理由：
 **前端不能因为要用协议类型就拖进 Engine 的依赖树**（Server 依赖 core / dictionary / lm / neural，前端一个都不要）。
 
+`scripts/install.sh` 按机器上有哪个框架装对应的前端（`--frontend auto|fcitx5|ibus|both`，缺省 auto = 能装的都装），
+`files.py` 只按给的路径照做（清单带 SHA256，装前逐个核对目标不是别人的文件）。三处值得记：
+IBus 的组件 XML 与 systemd 单元里都写死了安装后的绝对路径，所以由 install.sh 按 prefix 生成好再交给 `files.py`；
+`XMODIFIERS` 只用来提示「你在用的那个框架这次没装上」，不决定装什么（装完再切框架是常事，两支并存不冲突）；
+卸载要先 `systemctl --user disable --now` 再删文件，单元文件没了 systemd 就不认这个名字、停不掉的 Server 会一直占着 socket。
+
 ## apps/linux/ibus
 
 第二个前端（IBus），与 `fcitx5` 平级：同一个 Server、同一套协议。按键、焦点、重置与面板三样已经通，
