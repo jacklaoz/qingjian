@@ -123,6 +123,32 @@ impl Connection {
         self.event(session, LinuxEvent::Focus { focused })
     }
 
+    /// 这个上下文不再活跃（焦点离开、切走输入法、能力变了）。
+    ///
+    /// 缓冲里的东西怎么处置由 Server 按这三个事实决定：`focus_out` 且 `client_preedit` 时不上屏
+    /// （应用自己画着 preedit 的场合），`capability_changed` 时直接丢弃（进了密码框就不能留着）。
+    pub fn deactivate(
+        &mut self,
+        session: SessionId,
+        focus_out: bool,
+        client_preedit: bool,
+        capability_changed: bool,
+    ) -> Result<Reply, IbusError> {
+        self.event(
+            session,
+            LinuxEvent::Deactivate {
+                focus_out,
+                client_preedit,
+                capability_changed,
+            },
+        )
+    }
+
+    /// 应用要求重置：丢掉组句，不上屏。
+    pub fn reset(&mut self, session: SessionId) -> Result<Reply, IbusError> {
+        self.event(session, LinuxEvent::Reset)
+    }
+
     /// 关掉一个会话。没有回包。
     pub fn close_session(&mut self, session: SessionId) -> Result<(), IbusError> {
         let message = serde_json::to_value(ClientMessage::CloseSession { session })?;

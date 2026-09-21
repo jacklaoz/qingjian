@@ -69,6 +69,9 @@ reqwest = { version = "0.13", default-features = false }
 uuid = { version = "1.26", features = ["v4"] }
 tokio = { version = "1.53.1", features = ["rt", "time"] }
 
+# Linux IBus 前端：IBus 走 D-Bus，纯 Rust
+zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }
+
 # 自绘渲染器：CPU 栅格 + 文字整形/回退/栅格（fontdb / rustybuzz / swash）
 tiny-skia = "0.12.0"
 # 不开 fontconfig：不扫系统字体库，字体文件由渲染器按平台清单自己加载

@@ -8,3 +8,4 @@ pub mod mapping;
 pub mod modifiers;
 
 pub use mapping::to_key_event;
+pub use modifiers::is_release;

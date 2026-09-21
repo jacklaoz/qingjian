@@ -20,6 +20,16 @@ thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 libc = "0.2.189"
+# IBus 走 D-Bus；zbus 的接口对象要 Send + Sync，所以连接句柄是 Arc<Mutex<…>>
+zbus.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 
 [lints]
 workspace = true
+
+# 只有测试要按名字引 core：协议里的 `Frame` 带的候选就是 `qingjian_core::CandidateList`，
+# 造测试数据绕不开它。正式代码只经 qingjian-platform 用它，不直接依赖。
+[dev-dependencies]
+qingjian-core.workspace = true
+# 对着真 ibus-daemon 的端到端测试要自己当一回 IBus 客户端
+futures-util = { version = "0.3.34", default-features = false }
