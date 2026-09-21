@@ -3,7 +3,7 @@
 use super::diagnostics::{copy_to_pasteboard, open_with_system};
 use super::*;
 use crate::preferences::DEFAULT_FONT_LABEL;
-use qingjian_core::TraditionalVariant;
+use qingjian_core::{ExtraCandidates, TraditionalVariant};
 use qingjian_platform::ShiftLetter;
 
 impl Host {
@@ -378,6 +378,15 @@ impl Host {
             (Setting::Wubi, SettingValue::Bool(on)) => {
                 self.settings
                     .set_value("general", "wubi", if on { "wubi86" } else { "" });
+            }
+            // 弹出菜单按 ExtraCandidates::ALL 的顺序，第 0 项是两样都出
+            (Setting::Extras, SettingValue::Index(index)) => {
+                let key = ExtraCandidates::ALL
+                    .get(index)
+                    .copied()
+                    .unwrap_or_default()
+                    .key();
+                self.settings.set_value("general", "extras", key);
             }
             // 弹出菜单按 TraditionalVariant::ALL 的顺序，第 0 项是简体
             (Setting::Traditional, SettingValue::Index(index)) => {

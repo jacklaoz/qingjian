@@ -1,5 +1,6 @@
 //! 「通用」页：学习语言、每页候选数、输入方案、英文模式候选。
 
+use qingjian_core::ExtraCandidates;
 use qingjian_platform::{MAX_PAGE_SIZE, Scheme, ShiftLetter, SwitchKey};
 use windows_reactor::*;
 
@@ -12,6 +13,26 @@ pub(crate) const LANGUAGES: [(&str, &str); 4] = [
     ("日语", "ja"),
     ("西班牙语", "es"),
     ("不显示译文", "off"),
+];
+
+/// 候选里的 emoji 与符号：界面名 + 配置写法，直接照 [`ExtraCandidates::ALL`] 建，不另抄一份。
+pub(crate) const EXTRAS: [(&str, &str); ExtraCandidates::ALL.len()] = [
+    (
+        ExtraCandidates::ALL[0].label(),
+        ExtraCandidates::ALL[0].key(),
+    ),
+    (
+        ExtraCandidates::ALL[1].label(),
+        ExtraCandidates::ALL[1].key(),
+    ),
+    (
+        ExtraCandidates::ALL[2].label(),
+        ExtraCandidates::ALL[2].key(),
+    ),
+    (
+        ExtraCandidates::ALL[3].label(),
+        ExtraCandidates::ALL[3].key(),
+    ),
 ];
 
 /// 繁体输出：界面名 + 配置写法，与 `TraditionalVariant::ALL` 同序。
@@ -113,6 +134,11 @@ pub(crate) fn view(settings: &Settings, context: &mut ViewContext<Settings>) -> 
                 g.traditional.key(),
                 context.callback(Message::Traditional),
             ),
+        ),
+        field(
+            "候选里的 emoji 与符号",
+            "emoji 紧跟在对应的词后面（笑 → 😄），符号按名字打出、排在第二位（duigou → ✔）；两样合起来最多占四格。",
+            string_combo(&EXTRAS, g.extras.key(), context.callback(Message::Extras)),
         ),
         field(
             "中文模式标点转全角",

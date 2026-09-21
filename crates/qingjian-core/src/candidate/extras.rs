@@ -25,8 +25,8 @@ impl ExtraCandidates {
     /// 全部取值，设置界面按这个顺序列出。
     pub const ALL: [Self; 4] = [Self::Both, Self::Emoji, Self::Symbol, Self::Off];
 
-    /// 配置文件里的写法。
-    pub fn key(self) -> &'static str {
+    /// 配置文件里的写法。`const`：设置界面拿它在编译期建下拉表，不另抄一份。
+    pub const fn key(self) -> &'static str {
         match self {
             Self::Both => "both",
             Self::Emoji => "emoji",
@@ -36,7 +36,7 @@ impl ExtraCandidates {
     }
 
     /// 界面上的名字。
-    pub fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Both => "emoji 与符号",
             Self::Emoji => "只要 emoji",

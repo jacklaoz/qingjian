@@ -143,6 +143,9 @@ pub enum Setting {
     /// `[general] traditional`，弹出菜单：简体 + 三档繁体。
     Traditional,
 
+    /// `[general] extras`，弹出菜单：候选里出不出 emoji 与符号（四选一）。
+    Extras,
+
     /// `[general] log_level`，勾选框：勾上是 debug。
     VerboseLog,
 
@@ -211,6 +214,7 @@ impl Setting {
             Self::ImportDictionary => 19,
             Self::Scheme => 20,
             Self::Traditional => 47,
+            Self::Extras => 52,
             Self::VerboseLog => 21,
             Self::OpenLogDirectory => 22,
             Self::CopyDiagnostics => 23,
@@ -273,6 +277,7 @@ impl Setting {
             20 => Self::Scheme,
             49 => Self::Wubi,
             47 => Self::Traditional,
+            52 => Self::Extras,
             21 => Self::VerboseLog,
             22 => Self::OpenLogDirectory,
             23 => Self::CopyDiagnostics,
@@ -344,6 +349,7 @@ mod tests {
             Setting::Scheme,
             Setting::Wubi,
             Setting::Traditional,
+            Setting::Extras,
             Setting::VerboseLog,
             Setting::OpenLogDirectory,
             Setting::CopyDiagnostics,

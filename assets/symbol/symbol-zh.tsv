@@ -53,6 +53,39 @@ yuanquanshuzi	圆圈数字	① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩
 kuohaoshuzi	括号数字	⑴ ⑵ ⑶ ⑷ ⑸ ⑹ ⑺ ⑻ ⑼ ⑽
 luomashuzi	罗马数字	Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ Ⅶ Ⅷ Ⅸ Ⅹ
 
+# 逐个的序号：上面那三条每条十个，候选里一次只出三个，④ 起就够不着了。
+# 给每个数字单独一个码（`yuanquanqi` → ⑦），码都够长、不撞常用词。
+yuanquanyi	圆圈一	①
+yuanquaner	圆圈二	②
+yuanquansan	圆圈三	③
+yuanquansi	圆圈四	④
+yuanquanwu	圆圈五	⑤
+yuanquanliu	圆圈六	⑥
+yuanquanqi	圆圈七	⑦
+yuanquanba	圆圈八	⑧
+yuanquanjiu	圆圈九	⑨
+yuanquanshi	圆圈十	⑩
+kuohaoyi	括号一	⑴
+kuohaoer	括号二	⑵
+kuohaosan	括号三	⑶
+kuohaosi	括号四	⑷
+kuohaowu	括号五	⑸
+kuohaoliu	括号六	⑹
+kuohaoqi	括号七	⑺
+kuohaoba	括号八	⑻
+kuohaojiu	括号九	⑼
+kuohaoshi	括号十	⑽
+luomayi	罗马一	Ⅰ
+luomaer	罗马二	Ⅱ
+luomasan	罗马三	Ⅲ
+luomasi	罗马四	Ⅳ
+luomawu	罗马五	Ⅴ
+luomaliu	罗马六	Ⅵ
+luomaqi	罗马七	Ⅶ
+luomaba	罗马八	Ⅷ
+luomajiu	罗马九	Ⅸ
+luomashi	罗马十	Ⅹ
+
 # 货币
 renminbi	人民币	￥ ¥
 meiyuanfuhao	美元符号	＄ $

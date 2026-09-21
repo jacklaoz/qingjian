@@ -3,7 +3,7 @@
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSButton, NSPopUpButton};
-use qingjian_core::{Language, TraditionalVariant};
+use qingjian_core::{ExtraCandidates, Language, TraditionalVariant};
 use qingjian_platform::{Config, MAX_PAGE_SIZE, Scheme};
 
 use crate::preferences::controls::{
@@ -28,6 +28,9 @@ pub struct GeneralPage {
 
     /// 输出字形（第 0 项是简体）。
     traditional: Retained<NSPopUpButton>,
+
+    /// 候选里的 emoji 与符号（按 `ExtraCandidates::ALL` 的顺序）。
+    extras: Retained<NSPopUpButton>,
 
     /// 英文模式也给候选。
     english: Retained<NSButton>,
@@ -122,6 +125,23 @@ impl GeneralPage {
             mtm,
             "台湾正体连用语一起换（软件 → 軟體、内存 → 記憶體）；词库与学习数据始终是简体，改回简体后学过的词照样在。",
         );
+        let extras_titles: Vec<String> = ExtraCandidates::ALL
+            .iter()
+            .map(|value| value.label().to_owned())
+            .collect();
+        let extras = row_popup(
+            layout,
+            mtm,
+            "候选里的 emoji 与符号",
+            &extras_titles,
+            Setting::Extras,
+            target,
+        );
+        note(
+            layout,
+            mtm,
+            "emoji 紧跟在对应的词后面（笑 → 😄），符号按名字打出、排在第二位（duigou → ✔）；两样合起来最多占四格。",
+        );
         let punctuation = row_popup(
             layout,
             mtm,
@@ -189,6 +209,7 @@ impl GeneralPage {
             scheme,
             wubi,
             traditional,
+            extras,
             english,
             english_off_in_apps,
             chinese_first,
@@ -230,6 +251,12 @@ impl GeneralPage {
             TraditionalVariant::ALL
                 .iter()
                 .position(|variant| *variant == general.traditional),
+        );
+        select(
+            &self.extras,
+            ExtraCandidates::ALL
+                .iter()
+                .position(|value| *value == general.extras),
         );
         set_checked(&self.english, general.english_candidates);
         set_checked(

@@ -174,6 +174,29 @@ Engine 侧在 `engine/rescoring/`：接了打分器就取 Viterbi 前 `RESCORE_P
 
 IMK 输入法，源码按 `app / host / imk / candidates / menubar / preferences` 分目录。
 
+**在 Linux 上也能对它做类型检查**（不链接、不产出可执行文件，但编译错误与 clippy 都查得到）。
+`qingjian-macos` 在非 Apple 平台上是硬 `compile_error!`、提交钩子也排除它，于是在 Linux 上改它等于盲改——
+`7e92a97` 缺一个 import、这个壳因此好几笔都编不过，就是这么漏的。办法是对 darwin 目标 check，
+唯一的拦路虎是 `onig_sys`（candle → tokenizers 带进来的 C 库）要编 C，给它一个假的 pkg-config 条目让它改走「系统库」：
+
+```bash
+rustup target add aarch64-apple-darwin
+mkdir -p /tmp/onig/include && : > /tmp/onig/include/oniguruma.h
+cat > /tmp/onig/oniguruma.pc <<'PC'
+prefix=/tmp/onig
+includedir=${prefix}/include
+Name: oniguruma
+Description: 只为 cargo check，不链接
+Version: 6.9.9
+Libs: -lonig
+Cflags: -I${includedir}
+PC
+PKG_CONFIG_PATH=/tmp/onig PKG_CONFIG_ALLOW_CROSS=1 RUSTONIG_SYSTEM_LIBONIG=1 \
+  cargo clippy --target aarch64-apple-darwin -p qingjian-macos --all-targets -- -D warnings
+```
+
+与 CI 的 macOS job 是同一道门（clippy `-D warnings` 含测试目标）；真要跑测试、打包、装机仍得在 Mac 上。
+
 - 输入法菜单（状态项 + 系统输入源菜单）与偏好设置窗口都是配置文件的前端：只写 `config.toml`，`Host::apply_config` 一条通路热加载，激活期间每秒看一次文件 mtime。
   输入方案（`[general] scheme`）也在这里装配：双拼 / 注音设给引擎，形码额外按 `paths::code_table_path()` 挂码表
   （用户目录 `wubi/wubi86.tsv` 优先，包里 `Resources/wubi/` 兜底；找不到只警告并按拼音跑）。

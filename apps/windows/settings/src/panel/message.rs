@@ -12,6 +12,7 @@ pub(crate) enum Message {
     Scheme(Option<usize>),
     Wubi(bool),
     Traditional(Option<usize>),
+    Extras(Option<usize>),
     EnglishCandidates(bool),
     ChineseFirst(bool),
     /// 中文模式下 Shift+字母：交给应用（缺省）还是进组句缓冲区。

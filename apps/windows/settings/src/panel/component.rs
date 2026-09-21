@@ -59,6 +59,9 @@ impl Component for Settings {
             Message::Traditional(Some(i)) if i < general::TRADITIONAL.len() => {
                 self.save("general", "traditional", general::TRADITIONAL[i].1);
             }
+            Message::Extras(Some(i)) if i < general::EXTRAS.len() => {
+                self.save("general", "extras", general::EXTRAS[i].1);
+            }
             Message::EnglishCandidates(on) => self.save("general", "english_candidates", on),
             Message::ChineseFirst(on) => self.save("general", "chinese_first", on),
             Message::FullWidthPunctuation(on) => {
