@@ -121,7 +121,7 @@
 - [ ] Linux Fcitx5 后续（默认面板与手动安装已实现）：native Wayland 验证、Server 自绘 / GNOME 位图、神经重排、自动启动与打包；配置同步、跨平台词库
 - [~] Linux 双框架（装的时候认 fcitx5 还是 IBus，两个都支持）：IBus 前端 `apps/linux/ibus` 已能用——
   socket 客户端、按键翻译、D-Bus 层（按键 / 焦点 / 重置 / 面板三样）都通了，对着真 ibus-daemon 验过。还差：
-  - 密码框与私密输入：`SetContentType` 的映射写了但**没验过**（测试里 IBus 一次都没调它），要找个真密码框试
+  - 密码框与私密输入：`SetContentType` 的映射写了但**没验过**（测试里 IBus 一次都没调它），要找个真密码框试；验法见 [notes/linux-dual-frontend.md](../notes/linux-dual-frontend.md)
   - 按应用设置：IBus 这条路上还没拿到应用标识，`OpenSession` 的 `app` 报 `None`，`[apps]` 分节对它不生效
   - `focus_out` 的 `client_preedit` 现在一律报 `false`（缓冲原样上屏，同 IBus 老版本的行为），
     应用自己画 preedit 的场合要在真机上确认该不该报 `true`

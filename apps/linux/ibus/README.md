@@ -18,7 +18,7 @@
 | 按应用设置（`[apps]`） | 没有：IBus 这条路上还没找到拿应用标识的办法，`OpenSession` 的 `app` 报的是 `None` |
 | 安装脚本认框架、Server 自启 | 通了：`scripts/install.sh --frontend auto` 装能装的那几支，systemd 用户单元随装 |
 
-真机上的坑记在 [`docs/notes/linux-bringup.md`](../../../docs/notes/linux-bringup.md)。
+怎么验这两支见 [`docs/notes/linux-dual-frontend.md`](../../../docs/notes/linux-dual-frontend.md)，真机上的坑记在 [`docs/notes/linux-bringup.md`](../../../docs/notes/linux-bringup.md)。
 
 ## 跑起来
 

@@ -51,7 +51,7 @@ FocusOut 的行内预编辑由框架或声明 ClientUnfocusCommit 的客户端�
 
 ## 路径和排错
 
-用户安装见 [Linux 用户说明](../user/getting-started/linux.md)。安装只登记实际绝对插件库路径，不修改系统 Fcitx5 搜索规则；IBus 那一支装的是 `$XDG_DATA_HOME/ibus/component/qingjian.xml`（`<exec>` 写死安装后的绝对路径，由 install.sh 按 prefix 生成）。Server 的自启是 `$XDG_CONFIG_HOME/systemd/user/qingjian-server.service`（用户级单元，`--enable-service` 顺手 enable）；两个前端共用这一个 Server。
+两支前端的验收清单见 [linux-dual-frontend.md](linux-dual-frontend.md)。用户安装见 [Linux 用户说明](../user/getting-started/linux.md)。安装只登记实际绝对插件库路径，不修改系统 Fcitx5 搜索规则；IBus 那一支装的是 `$XDG_DATA_HOME/ibus/component/qingjian.xml`（`<exec>` 写死安装后的绝对路径，由 install.sh 按 prefix 生成）。Server 的自启是 `$XDG_CONFIG_HOME/systemd/user/qingjian-server.service`（用户级单元，`--enable-service` 顺手 enable）；两个前端共用这一个 Server。
 `QINGJIAN_SOCKET` 可指定绝对 socket 路径；缺省为 `$XDG_RUNTIME_DIR/qingjian.sock`，无 runtime 时用 `/tmp/qingjian-<uid>/qingjian.sock`。
 父目录须归当前用户且不可被其他用户写入；socket 权限为 0600。`QINGJIAN_RESOURCES` 覆盖资源根，`QINGJIAN_DICT` 可指定测试词库。
 默认数据从可执行文件旁 `../share/qingjian/resources` 找，支持源码开发目录回退。
