@@ -30,6 +30,11 @@ pub fn list(dir: &Path) -> Vec<(String, PathBuf)> {
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter_map(|p| {
+            // 点开头的不是词库：macOS 打包时混进来的 AppleDouble 资源叉（`._animals.qj`，data-v1 发布包里就有 11 个）
+            // 扩展名照样是 `.qj`，不跳过的话会在词库页里列成一本叫「._animals」的词库
+            if p.file_name()?.to_str()?.starts_with('.') {
+                return None;
+            }
             let extension = p.extension()?.to_str()?;
             let rank = EXTENSIONS.iter().position(|e| *e == extension)?;
             let stem = p.file_stem()?.to_str()?.to_owned();
@@ -110,6 +115,21 @@ mod tests {
             .map(|(stem, path)| (stem.as_str(), path.file_name().unwrap().to_str().unwrap()))
             .collect();
         assert_eq!(names, [("food", "food.tsv"), ("idioms", "idioms.qj")]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// macOS 打包混进来的 AppleDouble（`._idioms.qj`）扩展名一样，但不是词库，不该列出来。
+    #[test]
+    fn list_skips_dot_files() {
+        let dir =
+            std::env::temp_dir().join(format!("qingjian-extra-dicts-dot-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["idioms.qj", "._idioms.qj", ".hidden.tsv"] {
+            std::fs::write(dir.join(name), b"").unwrap();
+        }
+        let stems: Vec<String> = list(&dir).into_iter().map(|(stem, _)| stem).collect();
+        assert_eq!(stems, ["idioms"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
