@@ -6,7 +6,7 @@ mod spec;
 use std::path::Path;
 use std::time::Instant;
 
-use qingjian_core::{EmojiTable, Engine, Language};
+use qingjian_core::{EmojiTable, Engine, Language, SymbolTable};
 use qingjian_dictionary::{Dictionary, WordList};
 use qingjian_learning::{FrequencyLearner, InputLog, UsageStats, VocabularyBook};
 use qingjian_platform::extra_dictionaries;
@@ -74,6 +74,15 @@ pub fn assemble(spec: &AssemblySpec) -> Result<Engine, ServerError> {
     if let Some(table) = load_emoji(&spec.emoji) {
         tracing::info!(words = table.len(), "emoji 表已加载");
         engine = engine.with_emoji(table);
+    }
+    if let Some(path) = &spec.symbols {
+        match SymbolTable::from_path(path) {
+            Ok(table) => {
+                tracing::info!(codes = table.len(), "符号表已加载");
+                engine = engine.with_symbols(table);
+            }
+            Err(error) => tracing::warn!(%error, "符号表加载失败，不出符号候选"),
+        }
     }
     if let Some(files) = &spec.language_model {
         let started = Instant::now();
