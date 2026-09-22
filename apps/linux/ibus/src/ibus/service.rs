@@ -31,12 +31,18 @@ pub async fn serve(client: Shared) -> Result<zbus::Connection, zbus::Error> {
 
 /// IBus 总线地址。
 pub fn bus_address() -> Option<String> {
-    if let Some(address) = std::env::var_os("IBUS_ADDRESS")
-        && !address.is_empty()
-    {
-        return address.into_string().ok();
+    address_or_file(std::env::var("IBUS_ADDRESS").ok().as_deref())
+}
+
+/// 环境变量给了就用它，没给再去读地址文件。
+///
+/// 读环境变量与判断拆开，是为了测试不用改进程环境：测试线程是并行跑的，
+/// 一条测试 `set_var` 的同时另一条在读，结果就看时序（同文件里显示标识那两条真撞上过）。
+fn address_or_file(env: Option<&str>) -> Option<String> {
+    match env {
+        Some(address) if !address.is_empty() => Some(address.to_owned()),
+        _ => address_from_file(),
     }
-    address_from_file()
 }
 
 /// 从 `~/.config/ibus/bus/` 下的地址文件里读。
@@ -78,13 +84,21 @@ fn socket_name() -> Option<String> {
 
 /// `(主机名, 显示标识)`。
 fn display_id() -> Option<(String, String)> {
-    if let Some(wayland) = std::env::var_os("WAYLAND_DISPLAY")
-        && !wayland.is_empty()
-    {
-        return Some(("unix".to_owned(), wayland.into_string().ok()?));
+    display_id_from(
+        std::env::var("WAYLAND_DISPLAY").ok().as_deref(),
+        std::env::var("DISPLAY").ok().as_deref(),
+    )
+}
+
+/// 按 `WAYLAND_DISPLAY` 与 `DISPLAY` 两个值算 `(主机名, 显示标识)`。
+///
+/// 拆成纯函数是为了测试：原来两条测试一个 `set_var("WAYLAND_DISPLAY")`、一个 `remove_var` 它，
+/// 并行跑时互相踩，pre-push 全量测试时撞上过一次（单独跑怎么都复现不出来）。
+fn display_id_from(wayland: Option<&str>, display: Option<&str>) -> Option<(String, String)> {
+    if let Some(wayland) = wayland.filter(|w| !w.is_empty()) {
+        return Some(("unix".to_owned(), wayland.to_owned()));
     }
-    let display = std::env::var("DISPLAY").ok()?;
-    let (host, rest) = display.split_once(':')?;
+    let (host, rest) = display?.split_once(':')?;
     // `:0.1` 的屏幕号不进文件名
     let number = rest.split('.').next()?.to_owned();
     let host = if host.is_empty() {
@@ -157,12 +171,10 @@ mod tests {
     /// 环境变量优先：ibus-daemon 拉起引擎进程时设的就是它。
     #[test]
     fn env_address_wins() {
-        unsafe { std::env::set_var("IBUS_ADDRESS", "unix:abstract=/tmp/test-ibus") };
         assert_eq!(
-            bus_address().as_deref(),
+            address_or_file(Some("unix:abstract=/tmp/test-ibus")).as_deref(),
             Some("unix:abstract=/tmp/test-ibus")
         );
-        unsafe { std::env::remove_var("IBUS_ADDRESS") };
     }
 
     /// 地址文件里只认 `IBUS_ADDRESS=` 那一行，别的键（IBUS_DAEMON_PID）不要。
@@ -183,26 +195,32 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    /// Wayland 会话的文件名：主机名固定 `unix`，显示标识就是 `WAYLAND_DISPLAY`。
+    /// Wayland 会话的文件名：主机名固定 `unix`，显示标识就是 `WAYLAND_DISPLAY`；两个都有时它优先。
     #[test]
     fn wayland_display_id() {
-        unsafe { std::env::set_var("WAYLAND_DISPLAY", "wayland-0") };
         assert_eq!(
-            display_id(),
+            display_id_from(Some("wayland-0"), Some(":0")),
             Some(("unix".to_owned(), "wayland-0".to_owned()))
         );
-        unsafe { std::env::remove_var("WAYLAND_DISPLAY") };
+        // 空串当没设
+        assert_eq!(
+            display_id_from(Some(""), Some(":0")),
+            Some(("unix".to_owned(), "0".to_owned()))
+        );
     }
 
     /// X11 兜底：`:0` 的主机名为空要补成 `unix`，`.1` 的屏幕号不进文件名。
     #[test]
     fn x11_display_id_drops_the_screen_number() {
-        unsafe { std::env::remove_var("WAYLAND_DISPLAY") };
-        unsafe { std::env::set_var("DISPLAY", ":0.1") };
-        assert_eq!(display_id(), Some(("unix".to_owned(), "0".to_owned())));
-        unsafe { std::env::set_var("DISPLAY", "box:2") };
-        assert_eq!(display_id(), Some(("box".to_owned(), "2".to_owned())));
-        unsafe { std::env::remove_var("DISPLAY") };
+        assert_eq!(
+            display_id_from(None, Some(":0.1")),
+            Some(("unix".to_owned(), "0".to_owned()))
+        );
+        assert_eq!(
+            display_id_from(None, Some("box:2")),
+            Some(("box".to_owned(), "2".to_owned()))
+        );
+        assert_eq!(display_id_from(None, None), None);
     }
 
     /// 记着的 PID 不在了就当这个地址文件是陈旧的——真机上见过 fcitx 留的文件躺在那里，
