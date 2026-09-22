@@ -14,6 +14,14 @@ pub(crate) const LANGUAGES: [(&str, &str); 4] = [
     ("不显示译文", "off"),
 ];
 
+/// 繁体输出：界面名 + 配置写法，与 `TraditionalVariant::ALL` 同序。
+pub(crate) const TRADITIONAL: [(&str, &str); 4] = [
+    ("简体", "off"),
+    ("繁体（台湾正体）", "taiwan"),
+    ("繁体（香港）", "hongkong"),
+    ("繁体（通用字形）", "standard"),
+];
+
 /// 输入方案：界面名 + 配置写法，直接照 [`Scheme::ALL`] 建，不另抄一份。
 /// 数组长度取自 `ALL`，以后加方案时这里数组对不上就编不过。
 pub(crate) const SCHEMES: [(&str, &str); Scheme::ALL.len()] = [
@@ -107,11 +115,13 @@ pub(crate) fn view(settings: &Settings, context: &mut ViewContext<Settings>) -> 
                 .on_toggled(context.callback(Message::Wubi)),
         ),
         field(
-            "繁体输出",
-            "打字时将候选词转换为繁体中文。",
-            ToggleSwitch::new()
-                .is_on(g.traditional)
-                .on_toggled(context.callback(Message::Traditional)),
+            "输出字形",
+            "台湾正体连用语一起换（软件 → 軟體、内存 → 記憶體）；词库与学习数据始终是简体，改回简体后学过的词照样在。",
+            string_combo(
+                &TRADITIONAL,
+                g.traditional.key(),
+                context.callback(Message::Traditional),
+            ),
         ),
         field(
             "中文模式标点转全角",

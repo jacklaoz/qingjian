@@ -211,7 +211,7 @@ impl Engine {
         self.retype_snapshot = None;
         self.composition_started = None;
         self.page_turns = 0;
-        self.traditional_map.borrow_mut().clear();
+        self.traditional.forget();
     }
 
     pub fn delete_forward(&mut self) -> bool {
@@ -365,7 +365,7 @@ impl Engine {
         }
         self.meter_commit(&raw, InputSource::Raw, english_word);
         self.composition.clear();
-        self.traditional_map.borrow_mut().clear();
+        self.traditional.forget();
         self.remember_commit(LastCommit::plain(&raw));
         self.punctuation.note_committed(&raw);
         self.history.record(&raw);

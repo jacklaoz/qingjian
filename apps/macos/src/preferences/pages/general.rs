@@ -3,7 +3,7 @@
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSButton, NSPopUpButton};
-use qingjian_core::Language;
+use qingjian_core::{Language, TraditionalVariant};
 use qingjian_platform::{Config, MAX_PAGE_SIZE, Scheme};
 
 use crate::preferences::controls::{
@@ -28,8 +28,8 @@ pub struct GeneralPage {
     /// 五笔（86 版形码）；与拼音方案同时开着就是混输。
     wubi: Retained<NSButton>,
 
-    /// 繁体输出模式。
-    traditional: Retained<NSButton>,
+    /// 输出字形（第 0 项是简体）。
+    traditional: Retained<NSPopUpButton>,
 
     /// 英文模式也给候选。
     english: Retained<NSButton>,
@@ -119,6 +119,23 @@ impl GeneralPage {
             mtm,
             "与拼音方案同时开着就是混输：编码打全的五笔词在前，打不出的字直接打拼音。单用五笔请把拼音方案关掉；第 5 个字母起五笔查不到东西，自动只剩拼音。",
         );
+        let traditional_titles: Vec<String> = TraditionalVariant::ALL
+            .iter()
+            .map(|variant| variant.label().to_owned())
+            .collect();
+        let traditional = row_popup(
+            layout,
+            mtm,
+            "输出字形",
+            &traditional_titles,
+            Setting::Traditional,
+            target,
+        );
+        note(
+            layout,
+            mtm,
+            "台湾正体连用语一起换（软件 → 軟體、内存 → 記憶體）；词库与学习数据始终是简体，改回简体后学过的词照样在。",
+        );
         let punctuation = row_popup(
             layout,
             mtm,
@@ -132,8 +149,6 @@ impl GeneralPage {
             mtm,
             "仅影响标点，字母和数字保持半角；自定义短语原样输出。设置会保存。 ",
         );
-        let traditional = checkbox(mtm, "繁体输出", Setting::Traditional, target);
-        row_checkbox(layout, &traditional);
         let english = checkbox(
             mtm,
             "英文模式（Caps Lock）也给候选",
@@ -228,7 +243,12 @@ impl GeneralPage {
         set_checked(&self.shuangpin_raw_preedit, general.shuangpin_raw_preedit);
         self.shuangpin_raw_preedit
             .setEnabled(general.scheme().is_shuangpin());
-        set_checked(&self.traditional, general.traditional);
+        select(
+            &self.traditional,
+            TraditionalVariant::ALL
+                .iter()
+                .position(|variant| *variant == general.traditional),
+        );
         set_checked(&self.english, general.english_candidates);
         set_checked(
             &self.english_off_in_apps,

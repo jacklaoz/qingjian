@@ -12,7 +12,7 @@ pub(crate) enum Message {
     Scheme(Option<usize>),
     ShuangpinRawPreedit(bool),
     Wubi(bool),
-    Traditional(bool),
+    Traditional(Option<usize>),
     EnglishCandidates(bool),
     ChineseFirst(bool),
     /// 中文模式下 Shift+字母：交给应用（缺省）还是进组句缓冲区。
