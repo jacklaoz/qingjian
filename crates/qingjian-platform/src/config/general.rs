@@ -1,4 +1,4 @@
-use qingjian_core::ShuangpinScheme;
+use qingjian_core::{ExtraCandidates, ShuangpinScheme};
 use serde::{Deserialize, Serialize};
 
 use super::scheme::{Scheme, scheme_label};
@@ -102,6 +102,10 @@ pub struct GeneralConfig {
     /// 旧键（同上的 `[general] zhuyin`）：同上。
     pub zhuyin: Option<bool>,
 
+    /// 候选里出不出 emoji 与符号：`both`（缺省）/ `emoji` / `symbol` / `off`。
+    /// 表装没装是另一回事，关掉之后表还在（见 [`ExtraCandidates`]）。
+    pub extras: ExtraCandidates,
+
     /// 日志级别，缺省 info（不含用户敲的内容）。
     pub log_level: LogLevel,
 
@@ -143,6 +147,7 @@ impl Default for GeneralConfig {
             wubi: String::new(),
             shuangpin: None,
             zhuyin: None,
+            extras: ExtraCandidates::default(),
             log_level: LogLevel::default(),
             input_log: true,
             learning: true,

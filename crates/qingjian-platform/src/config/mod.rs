@@ -214,6 +214,9 @@ preedit = "both"
 # 英文模式（Caps Lock 亮着）是否给英文候选：Tab 或方向键选词，空格、回车、标点仍原样上屏敲的字母；false 就是纯直通
 english_candidates = true
 
+# 候选里出不出 emoji 与符号：both 两样都出（缺省）/ emoji 只要 emoji（笑 → 😄）/ symbol 只要符号（duigou → ✔）/ off 都不要
+# emoji 紧跟在对应的词后面，符号按敲的拼音出、固定在第 2 位
+extras = "both"
 # 繁体输出模式。开启后上屏繁体，不影响词库和个人词频的简体记录。
 traditional = false
 # 中文模式下整段输入是英文词时（hello / key）是否让中文候选排第一、英文词第二；缺省 false：拼音不像话的输入英文词排第一

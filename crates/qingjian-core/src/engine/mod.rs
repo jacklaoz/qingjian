@@ -61,7 +61,7 @@ pub use vocabulary::{
     FRESH_UNTIL, LevelCount, NoVocabularyTracker, VocabularySummary, VocabularyTracker,
 };
 
-use crate::candidate::{Candidate, CandidateKind, CandidateList, Language};
+use crate::candidate::{Candidate, CandidateKind, CandidateList, ExtraCandidates, Language};
 use crate::composition::Composition;
 use crate::correction::{self, Correction, TypoCosts, typo};
 use crate::emoji::EmojiTable;
@@ -76,6 +76,7 @@ use crate::sentence::{
 };
 use crate::shortcut;
 use crate::shuangpin::Scheme;
+use crate::symbol::SymbolTable;
 
 use commit::CommitChain;
 
@@ -258,6 +259,12 @@ pub struct Engine {
     /// emoji 表，没有就不出 emoji 候选。
     emoji: Option<EmojiTable>,
 
+    /// 符号表（按输入码查），没有就不出符号候选。
+    symbols: Option<SymbolTable>,
+
+    /// 候选里出不出 emoji 与符号（配置项 `[general] extras`），缺省两样都出。
+    extras: ExtraCandidates,
+
     /// 辅码态：`None` 是拼音态，`Some` 是辅码态（空串 = 刚敲下触发键、码段还没开始）。
     /// 码段不进 `composition`：它与拼音分段记账、分段画（见 [`AuxSegment`]）。
     aux_code: Option<String>,
@@ -319,6 +326,19 @@ const ENGLISH_ZIPF_FLOOR: f64 = 3.0;
 
 /// emoji 只配给前几个候选，每个词最多几个、一次最多几个。
 const EMOJI_SCAN: usize = 5;
+
+/// 一次查询最多插几个符号候选。
+const SYMBOL_TOTAL: usize = 3;
+
+/// emoji 与符号**合起来**最多占第一页几格。
+///
+/// 两样各自的上限都是 3，撞在一起（`xingxing` → ★ ☆ ✦ 加上 ⭐ 🌟）就是 5 格，
+/// 而第一页一共才 9 格——挑一个符号不该翻到第二页才看得见词。emoji 先插，符号按剩下的格数收着。
+const EXTRAS_TOTAL: usize = 4;
+
+/// 符号插在第几位（0 起）：**第 2 位**。
+/// 首选要留给词——用户打 `duigou` 十有八九是要那个符号，但打 `jiahao` 也可能是要「加号」这个词。
+const SYMBOL_AT: usize = 1;
 const EMOJI_PER_WORD: usize = 2;
 const EMOJI_TOTAL: usize = 3;
 
@@ -425,6 +445,8 @@ impl Engine {
             code: None,
             phonetic: true,
             emoji: None,
+            symbols: None,
+            extras: ExtraCandidates::default(),
             aux_code: None,
             aux_enabled: false,
             aux_show: false,

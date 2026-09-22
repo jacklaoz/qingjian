@@ -330,6 +330,8 @@ impl Engine {
             // 快捷候选按敲的键认（`rq` 日期），双拼下也是
             self.insert_shortcuts(&mut items, keys);
             self.insert_emoji(&mut items);
+            // 符号也按敲的键认；放在 emoji 之后，名字正好是词库里的词时（人民币 → ¥）去重靠它
+            self.insert_symbols(&mut items, keys);
         }
         let rank = start.elapsed();
 

@@ -1,4 +1,4 @@
-//! 附加候选：日期时间等快捷项、中英混输的英文词与补全、emoji。
+//! 附加候选：日期时间等快捷项、中英混输的英文词与补全、emoji 与符号。
 
 use super::*;
 
@@ -138,6 +138,9 @@ impl Engine {
     /// emoji 候选：前几个中文候选里有配 emoji 的，emoji 紧跟在那个词后面，右侧标注它对应的词。
     /// 词后面紧挨着的英文词候选（中文优先时 `key` → 可以、key）不被 emoji 挤开，emoji 排在它之后。
     pub(super) fn insert_emoji(&self, items: &mut Vec<Candidate>) {
+        if !self.extras.emoji() {
+            return;
+        }
         let Some(table) = &self.emoji else { return };
         let mut inserted = 0;
         let mut index = 0;
@@ -190,6 +193,56 @@ impl Engine {
                 index += 1;
                 inserted += 1;
             }
+        }
+    }
+
+    /// 按敲的输入码插符号候选（`duigou` → ✔）。
+    ///
+    /// 与 emoji 的区别在查法：emoji 按候选词的文本查、紧跟那个词，所以词库里没有的词挂不上；
+    /// 符号按输入码查，插在固定的第 [`SYMBOL_AT`] 位。**首选留给词**——
+    /// 打 `duigou` 多半是要符号，但打 `jiahao` 也可能是要「加号」这个词。
+    ///
+    /// 已经在候选里的符号不再插一遍：名字正好是词库里的词时（`renminbi` → 人民币 → ¥），
+    /// emoji 那条路已经把它挂在词后面了。
+    pub(super) fn insert_symbols(&self, items: &mut Vec<Candidate>, keys: &str) {
+        if !self.extras.symbol() {
+            return;
+        }
+        let Some(table) = &self.symbols else { return };
+        let Some(entry) = table.lookup(keys) else {
+            return;
+        };
+        let syllables = items
+            .first()
+            .map_or_else(Vec::new, |item| item.syllables.clone());
+        // emoji 已经占掉的格数要从符号的份额里扣：两样都按各自上限来的话第一页就没词了
+        let taken = items
+            .iter()
+            .filter(|item| item.kind == CandidateKind::Emoji)
+            .count();
+        let budget = SYMBOL_TOTAL.min(EXTRAS_TOTAL.saturating_sub(taken));
+        let mut index = SYMBOL_AT.min(items.len());
+        let mut inserted = 0;
+        for symbol in &entry.symbols {
+            if inserted >= budget {
+                break;
+            }
+            if items.iter().any(|item| item.text == *symbol) {
+                continue;
+            }
+            items.insert(
+                index,
+                Candidate {
+                    text: symbol.clone(),
+                    kind: CandidateKind::Emoji,
+                    syllables: syllables.clone(),
+                    reading: Some(entry.name.clone()),
+                    translation: None,
+                    aux_code: None,
+                },
+            );
+            index += 1;
+            inserted += 1;
         }
     }
 }
