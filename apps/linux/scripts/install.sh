@@ -163,7 +163,11 @@ echo '已安装：'
 [[ "$want_fcitx5" != true ]] || echo "  fcitx5 插件  $install_prefix/lib/fcitx5/qingjian.so"
 [[ "$want_ibus" != true ]] || echo "  IBus 前端    $install_prefix/bin/qingjian-linux-ibus"
 echo "  Server       $install_prefix/bin/qingjian-linux-server"
-if command -v systemctl >/dev/null 2>&1; then
+# systemd 只从 ~/.config/systemd/user 找用户单元：配置目录被换到别处时（测试、临时安装）单元装在那里它看不见，
+# 按名字 enable 反而会去开本机真装的那一份，所以这种情况不 enable、只提示
+systemd_sees_unit=false
+[[ "${XDG_CONFIG_HOME:-$HOME/.config}" == "$HOME/.config" ]] && systemd_sees_unit=true
+if command -v systemctl >/dev/null 2>&1 && [[ "$systemd_sees_unit" == true ]]; then
   if [[ "$enable_service" == true ]]; then
     systemctl --user daemon-reload
     systemctl --user enable --now qingjian-server.service
@@ -173,6 +177,8 @@ if command -v systemctl >/dev/null 2>&1; then
     echo '挂开机自启：systemctl --user daemon-reload && systemctl --user enable --now qingjian-server.service'
   fi
 else
+  [[ "$systemd_sees_unit" == true || "$enable_service" != true ]] \
+    || echo 'XDG_CONFIG_HOME 不是 ~/.config，systemd 看不到这份单元，没有 enable（避免误开本机真装的那一份）。'
   echo "Server 要手动起：$install_prefix/bin/qingjian-linux-server"
 fi
 [[ "$want_fcitx5" != true ]] || echo 'fcitx5：重启 Fcitx5，在配置工具取消“仅显示当前语言”后添加“青简”。'
