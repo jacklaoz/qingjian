@@ -27,32 +27,6 @@ description: 卸载青简、连同学习数据一起删除、只清除输入日�
 
 学习数据与设置保留在「%APPDATA%\Qingjian」，重新安装后仍可用；连同数据一起删除时，卸载后手动删除该文件夹。
 
-## Linux
-
-```sh
-sudo apt remove qingjian qingjian-settings qingjian-data qingjian-model
-```
-
-学习数据与设置保留在「~/.local/share/qingjian/」与「~/.config/qingjian/」，重新安装后仍可用；连同数据一起删除时，卸载后自行删除这两个目录与「~/.local/state/qingjian/」（运行日志）。
-
-RPM 版：
-
-```sh
-sudo dnf remove qingjian qingjian-settings qingjian-data qingjian-model
-```
-
-数据位置与保留规则同上。
-
-Flatpak 版：
-
-```sh
-flatpak uninstall --user app.qingjian.Qingjian
-sudo rm /usr/share/ibus/component/qingjian.xml
-ibus write-cache --system
-```
-
-其数据在「~/.var/app/app.qingjian.Qingjian/」，卸载时加 `--delete-data` 可一并删除。
-
 所有数据均为本机文件，删除后不可恢复，没有云端副本。
 
 ## 只清除一部分
