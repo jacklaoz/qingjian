@@ -3,7 +3,7 @@
 > **这一页记的是走 IBus 那次，不是现行方案。** Linux 后来改成 Rust Server + Fcitx5 默认面板
 > （见 [linux-fcitx5.md](linux-fcitx5.md)），IBus 壳与 deb / rpm / flatpak 打包都已从 main 移出，
 > 完整代码在合并前的分支末端 `26ece65`（`git show 26ece65:apps/linux/ime/src/ibus/service.rs` 这样取）；
-> D-Bus 那层与按键翻译已经取回到 `apps/linux/ime/src/{ibus,keys}` 备用。留着这一页是因为**坑与验收数字对以后做双框架支持仍然有效**：
+> D-Bus 那层与按键翻译后来移植进了 `apps/linux/ibus`（改成连 Server 的前端，第二个框架）。留着这一页是因为**坑与验收数字仍然有效**：
 > 下面五个坑（总线地址 / Shift+数字 / GVariant 嵌套 / 把 `/` 当仓库根 / 锁毒化）与 IBus 面板的限制，
 > 换成瘦客户端接 Server 之后一样会碰到。当时的方案取舍文档 `plan/linux_plan.md` 已随路线一起删掉。
 
