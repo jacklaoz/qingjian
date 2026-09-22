@@ -24,6 +24,7 @@ def parse_args():
     parser.add_argument('--plugin', help='fcitx5 插件 qingjian.so；这一支不装就不给')
     parser.add_argument('--ibus', help='IBus 前端可执行文件；这一支不装就不给')
     parser.add_argument('--ibus-xml', help='IBus 组件 XML（install.sh 按安装路径生成好的）')
+    parser.add_argument('--ibus-env', help='设 IBUS_COMPONENT_PATH 的 environment.d 片段（install.sh 生成好的）')
     parser.add_argument('--service', help='systemd 用户单元文件（同上，已填好路径）')
     parser.add_argument('--sample', action='store_true', help='只装样例词库，不校验产品数据')
     return parser.parse_args()
@@ -95,6 +96,8 @@ def main():
         files[prefix / 'bin/qingjian-linux-ibus'] = Path(options.ibus)
         # 组件 XML 里写死了可执行文件的绝对路径，所以由 install.sh 按 prefix 生成好再交过来
         files[data / 'ibus/component/qingjian.xml'] = Path(options.ibus_xml)
+        # IBus 不读用户目录下的组件，只认 IBUS_COMPONENT_PATH；会话启动时由 systemd 从 environment.d 读进来
+        files[config / 'environment.d/qingjian-ibus.conf'] = Path(options.ibus_env)
     if options.service:
         files[config / 'systemd/user/qingjian-server.service'] = Path(options.service)
     resources = prefix / 'share/qingjian/resources'

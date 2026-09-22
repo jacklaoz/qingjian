@@ -321,7 +321,7 @@ Unix socket 用共享长度前缀与 Frame（当前公共版本 6）；插件复
 
 `scripts/install.sh` 按机器上有哪个框架装对应的前端（`--frontend auto|fcitx5|ibus|both`，缺省 auto = 能装的都装），
 `files.py` 只按给的路径照做（清单带 SHA256，装前逐个核对目标不是别人的文件）。三处值得记：
-IBus 的组件 XML 与 systemd 单元里都写死了安装后的绝对路径，所以由 install.sh 按 prefix 生成好再交给 `files.py`；
+IBus 的组件 XML 与 systemd 单元里都写死了安装后的绝对路径，所以由 install.sh 按 prefix 生成好再交给 `files.py`；**IBus 不读 `~/.local/share/ibus/component/`**，只认 `IBUS_COMPONENT_PATH`，所以另装一个 environment.d 片段把用户目录加在**最前面**——两个目录里有同名组件时以排在前面的为准，装过旧版 deb 的机器上新装的才会生效（这两条都在 IBus 1.5.34 上实测过）；
 `XMODIFIERS` 只用来提示「你在用的那个框架这次没装上」，不决定装什么（装完再切框架是常事，两支并存不冲突）；
 卸载要先 `systemctl --user disable --now` 再删文件，单元文件没了 systemd 就不认这个名字、停不掉的 Server 会一直占着 socket。
 

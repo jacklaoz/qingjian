@@ -95,8 +95,11 @@ B 与 C 是代码里标着「没验过」的两条，优先做：
 
 ## 四个坑，都踩过
 
-- **系统装的旧版同名**。deb 装的 `/usr/bin/qingjian-linux` 与开发版组件名都是 `org.freedesktop.IBus.Qingjian`，
-  daemon 挑哪份看运气。测开发版之前先把它停掉。决定组件从哪读的是 `IBUS_COMPONENT_PATH`，不是 `XDG_DATA_DIRS`。
+- **IBus 不读用户目录下的组件，同名时看路径顺序**。IBus 只认 `IBUS_COMPONENT_PATH`（没设时只有系统目录），
+  `~/.local/share/ibus/component/` 放了也白放——安装脚本第一版就栽在这里，端到端测试手动指定了路径所以没测出来。
+  deb 装的旧版与开发版组件名都是 `org.freedesktop.IBus.Qingjian`，两个目录都在路径里时**排在前面的生效**
+  （用 `ibus read-cache` 看注册表、用 `ibus engine qingjian` 看实际拉起的进程，两种顺序各试过）。
+  安装脚本因此用 environment.d 把用户目录放在最前面；验它时组件路径要从 systemd 的 environment.d 生成器取，别手写。
 - **别用真实数据目录**。自动化那层一律私有 XDG：测试打的字会进真实学习数据。
 - **`pkill -f 'qingjian…'` 会把自己杀掉**（模式串匹配到自己那条命令行），按 PID 杀。
 - **引擎进程的日志进了 daemon**。ibus-daemon 拉起引擎进程，它的 stdout 跟着 daemon 走；

@@ -53,7 +53,7 @@ systemctl --user enable --now qingjian-server.service
 不想用自启的话，手动启动并保持终端运行：`~/.local/bin/qingjian-linux-server`（关掉终端就结束了，下次登录要再来一次）。
 
 **Fcitx5**：重启 Fcitx5，打开配置工具，取消「仅显示当前语言」，添加「青简」。
-**IBus**：`ibus restart` 之后 `ibus engine qingjian`，或在系统「设置 → 键盘」里添加「青简」。
+**IBus**：**重新登录一次**，然后在系统「设置 → 键盘」里添加「青简」，或 `ibus engine qingjian`。IBus 只在登录时读取输入法列表的位置，装完不重新登录是看不到青简的。如果系统里另外装过青简（比如旧版的 deb 包），重新登录后以这次装的为准；想换回那一份，运行卸载脚本后再重新登录。
 
 切换到青简后输入 `nihao`，空格选中「你好」。单击 `Shift` 切换中英；按键规则见 [按键与快捷键](keys.md#linux)。
 

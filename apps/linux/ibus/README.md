@@ -60,9 +60,9 @@ QINGJIAN_IBUS_TEST=1 IBUS_ADDRESS="unix:path=$QJ/bus" \
 
 四处不这么写就会浪费一下午：
 
-- **`IBUS_COMPONENT_PATH` 才是决定组件从哪读的**，`XDG_DATA_DIRS` 不管用。机器上装过 `.deb` 时
-  `/usr/share/ibus/component/qingjian.xml` 与开发版**同名**，daemon 挑的是系统那份，
-  症状是「改了代码重新编译，行为一点没变」。
+- **`IBUS_COMPONENT_PATH` 才是决定组件从哪读的**，`XDG_DATA_DIRS` 与 `~/.local/share/ibus/component/` 都不管用。
+  机器上装过 `.deb` 时 `/usr/share/ibus/component/qingjian.xml` 与开发版**同名**，路径里排在前面的那份生效，
+  排错了的症状是「改了代码重新编译，行为一点没变」。
 - **Server 的 socket 目录必须是 0700**，否则 Server 拒绝 bind（它自己的安全检查）。
 - **引擎进程的日志要自己引出来**：daemon 拉起它，stdout 进了 daemon。排错时把 `<exec>` 指向一个
   `RUST_LOG=debug ... >> engine.log 2>&1` 的小脚本，事件交错（焦点 / 按键谁先谁后）一眼就看见。

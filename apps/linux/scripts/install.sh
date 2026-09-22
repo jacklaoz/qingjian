@@ -137,7 +137,19 @@ fi
 if [[ "$want_ibus" == true ]]; then
   # 组件 XML 里的 <exec> 是装好之后的绝对路径，所以现在就按 prefix 生成
   "$built/qingjian-linux-ibus" --ibus-xml "$install_prefix/bin/qingjian-linux-ibus" > "$staged/qingjian.xml"
-  files_args+=(--ibus "$built/qingjian-linux-ibus" --ibus-xml "$staged/qingjian.xml")
+  # **IBus 不读 ~/.local/share/ibus/component/**，只认 IBUS_COMPONENT_PATH（没设时只有系统目录），
+  # 所以光把 XML 放进用户目录，真会话里根本看不到这个引擎（IBus 1.5.34 上验过）。
+  # 用 environment.d 在会话启动时把用户目录加进去；**用户目录放最前面**：两个目录里有同名组件时
+  # 以排在前面的为准（也验过），装过旧版 deb 的机器上新装的才会生效。
+  data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+  system_components=/usr/share/ibus/component
+  [[ -d "$system_components" ]] || system_components=/usr/local/share/ibus/component
+  cat > "$staged/qingjian-ibus.conf" <<ENV
+# 青简 IBus 前端（apps/linux/scripts/install.sh 生成，uninstall.sh 删除）。
+# IBus 不读用户目录下的组件，只认这个变量；用户目录放最前面，同名组件以前面的为准。
+IBUS_COMPONENT_PATH=$data_home/ibus/component:\${IBUS_COMPONENT_PATH:-$system_components}
+ENV
+  files_args+=(--ibus "$built/qingjian-linux-ibus" --ibus-xml "$staged/qingjian.xml" --ibus-env "$staged/qingjian-ibus.conf")
 fi
 if command -v systemctl >/dev/null 2>&1; then
   sed "s|@EXEC@|$install_prefix/bin/qingjian-linux-server|" \
@@ -164,4 +176,11 @@ else
   echo "Server 要手动起：$install_prefix/bin/qingjian-linux-server"
 fi
 [[ "$want_fcitx5" != true ]] || echo 'fcitx5：重启 Fcitx5，在配置工具取消“仅显示当前语言”后添加“青简”。'
-[[ "$want_ibus" != true ]] || echo 'IBus：ibus restart 之后 ibus engine qingjian，或在“设置 → 键盘”里添加“青简”。'
+if [[ "$want_ibus" == true ]]; then
+  echo 'IBus：**重新登录一次**（组件路径在会话启动时读），然后在“设置 → 键盘”里添加“青简”，或 ibus engine qingjian。'
+  echo '      IBus 那一支只是前端，要 Server 起着才能打字；没加 --enable-service 的话记得按上面的命令挂自启。'
+  if [[ -f /usr/share/ibus/component/qingjian.xml ]]; then
+    echo '注意：系统里还装着另一份青简（/usr/share/ibus/component/qingjian.xml，多半是旧版 deb）。'
+    echo '      重新登录后以这次装的为准；想回到那一份就跑 uninstall.sh。'
+  fi
+fi
