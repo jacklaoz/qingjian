@@ -3,6 +3,7 @@
 use super::diagnostics::{copy_to_pasteboard, open_with_system};
 use super::*;
 use crate::preferences::DEFAULT_FONT_LABEL;
+use qingjian_core::ExtraCandidates;
 use qingjian_platform::ShiftLetter;
 
 impl Host {
@@ -339,6 +340,15 @@ impl Host {
             }
             (Setting::CloudSlots, SettingValue::Index(index)) => {
                 self.settings.set_value("predict", "slots", index as i64);
+            }
+            // 弹出菜单按 ExtraCandidates::ALL 的顺序，第 0 项是两样都出
+            (Setting::Extras, SettingValue::Index(index)) => {
+                let key = ExtraCandidates::ALL
+                    .get(index)
+                    .copied()
+                    .unwrap_or_default()
+                    .key();
+                self.settings.set_value("general", "extras", key);
             }
             (Setting::Traditional, SettingValue::Bool(on)) => {
                 self.settings.set_bool("general", "traditional", on);

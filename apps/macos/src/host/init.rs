@@ -94,6 +94,10 @@ pub fn init(mtm: MainThreadMarker, info: &BundleInfo) -> Result<(), HostError> {
         tracing::info!(words = table.len(), "emoji 表已加载");
         engine = engine.with_emoji(table);
     }
+    if let Some(table) = load_symbol_table("symbol-zh.tsv") {
+        tracing::info!(codes = table.len(), "符号表已加载");
+        engine = engine.with_symbols(table);
+    }
     // 语言模型可选：没有就退化成一元词频整句；打包过的 lm.qj 优先
     let model = if let Ok(packed) = paths::resource("lm.qj") {
         Some(BigramModel::from_path(&packed)?)
@@ -255,6 +259,18 @@ pub(super) fn load_emoji_tables(names: &[&str]) -> Option<EmojiTable> {
         }
     }
     merged
+}
+
+/// 包里的符号表；没有或坏了只记日志，不出符号候选。
+pub(super) fn load_symbol_table(name: &str) -> Option<SymbolTable> {
+    let path = paths::resource(name).ok()?;
+    match SymbolTable::from_path(&path) {
+        Ok(table) => Some(table),
+        Err(error) => {
+            tracing::warn!(%error, name, "符号表加载失败，跳过");
+            None
+        }
+    }
 }
 
 pub(super) fn glossary_path(language: Language) -> Result<PathBuf, HostError> {
