@@ -41,7 +41,7 @@ cp -a %{qj_root}/. %{buildroot}/
 # 实例根本不重起；所以已经登录的用户直接在他们正在跑的实例里重载并（重）启动（与 deb 的 postinst 一致）
 %post
 systemctl --global enable qingjian-server.service >/dev/null 2>&1 || :
-for user in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+loginctl list-users --no-legend 2>/dev/null | while read -r _ user _; do
   systemctl --user -M "$user@" daemon-reload >/dev/null 2>&1 || :
   systemctl --user -M "$user@" restart qingjian-server.service >/dev/null 2>&1 || :
 done
@@ -49,7 +49,7 @@ done
 %preun
 if [ $1 -eq 0 ]; then
   systemctl --global disable qingjian-server.service >/dev/null 2>&1 || :
-  for user in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+  loginctl list-users --no-legend 2>/dev/null | while read -r _ user _; do
     systemctl --user -M "$user@" stop qingjian-server.service >/dev/null 2>&1 || :
   done
 fi

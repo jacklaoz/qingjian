@@ -113,3 +113,7 @@ Debian 13、Ubuntu 26.04、Fedora 42 容器里看过；`dpkg -i` 不补依赖，
 - **flatpak 版的数据不在老地方**：配置、学习数据在 `~/.var/app/app.qingjian.Qingjian/`，与 deb / rpm / `install.sh` 的 `~/.config/qingjian`、`~/.local/share/qingjian` 不共用。
 - **IBus 总线在沙箱里**：ibus-daemon 拉起引擎时设了 `IBUS_ADDRESS`，socket 在 `~/.cache/ibus`（也见过 `$XDG_RUNTIME_DIR/ibus`），
   清单给了这几处的只读权限；连 unix socket 不需要文件系统可写。
+
+- **`--global` 对登录界面也生效**：gdm 这类系统账户也有自己的用户会话（`loginctl list-users` 里能看到 `gdm`），
+  不拦的话 greeter 里也会起一个 Server、白白加载词库与模型。服务单元写 `ConditionUser=!@system` 跳过系统账户（systemd 237+）。
+  装包脚本取用户名用 shell 的 `read`，不靠 awk（openSUSE 最小容器里没有 awk）。
