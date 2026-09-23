@@ -45,11 +45,19 @@ fn fake_server(limit: Option<usize>) -> (PathBuf, Received, thread::JoinHandle<(
             } else if value.get("LinuxHello").is_some() {
                 Some(json!({"LinuxHello": {"session": 1, "page_size": 9}}))
             } else if value.get("LinuxEvent").is_some() {
+                // 真 Server 在回包上另附展示身份（identity），轮询靠里面的版本号判断帧换没换
                 Some(json!({"KeyResult": {
                     "session": 1,
                     "outcome": KeyOutcome::Consumed,
                     "commit": Value::Null,
                     "frame": Frame::default(),
+                    "identity": {"generation": 1, "context": "/ibus/context/1", "revision": 7},
+                }}))
+            } else if value.get("Poll").is_some() {
+                Some(json!({"Update": {
+                    "session": 1,
+                    "frame": Frame::default(),
+                    "identity": {"generation": 1, "context": "/ibus/context/1", "revision": 8},
                 }}))
             } else {
                 // CloseSession 没有回包
@@ -151,5 +159,33 @@ fn closed_server_is_reported() {
     assert!(
         matches!(error, IbusError::Closed | IbusError::Codec(_)),
         "应该是连接断了这一类，实际是 {error}"
+    );
+}
+
+/// 组句期间的轮询：发的是 `Poll`，回包（`Update`）与按键的回包（`KeyResult`）里展示版本号都要读出来，
+/// IBus 前端靠它判断本地整句模型的重排结果到了没有（版本号变新才重画）。
+#[test]
+fn poll_reads_display_revision() {
+    let (path, received, server) = fake_server(None);
+    let mut connection = Connection::connect_at(&path).expect("连上假 Server");
+    let session = connection.open_session("/ibus/context/1").expect("开会话");
+    connection
+        .capabilities(session, Capabilities::default())
+        .expect("报能力");
+
+    let typed = connection
+        .key(session, crate::key::to_key_event('n' as u32, 0), false)
+        .expect("按键");
+    assert_eq!(typed.revision, Some(7));
+    let polled = connection.poll(session).expect("轮询");
+    assert_eq!(polled.revision, Some(8));
+
+    connection.close_session(session).expect("关会话");
+    drop(connection);
+    server.join().expect("假 Server 正常收工");
+    let seen = received.lock().expect("取回收到的消息");
+    assert!(
+        seen.contains(&json!({"Poll": {"session": session}})),
+        "轮询要发 Poll：{seen:?}"
     );
 }

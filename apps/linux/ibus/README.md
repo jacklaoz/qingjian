@@ -14,6 +14,8 @@
 | socket 客户端（连接、握手、会话、事件） | 通了，有测试 |
 | 按键翻译（keysym + 修饰键 → `KeyEvent`） | 通了，有测试 |
 | D-Bus 层（组件注册、按键、焦点、重置、面板三样） | 通了，**对着真 ibus-daemon 验过** |
+| 本地整句模型的重排（组句期间每 80 毫秒 `Poll`，版本号变新才重画） | 通了，**对着真 ibus-daemon 验过**：`houxuanshengcheng` 停键约 0.6 秒后候选声称 → 候选生成，上屏后轮询即停 |
+| 回报实际显示了哪些释义（`DisplayAcknowledged`） | 没有：Fcitx5 插件每画一帧都回报，Server 据此给生词记曝光；IBus 这边不回报，生词标记不会随看过的次数消失 |
 | 密码框 / 私密输入（`SetContentType`） | 代码有，**没验过**：测试里 IBus 一次都没调它 |
 | 按应用设置（`[apps]`） | 没有：IBus 这条路上还没找到拿应用标识的办法，`OpenSession` 的 `app` 报的是 `None` |
 | 安装脚本认框架、Server 自启 | 通了：`scripts/install.sh --frontend auto` 装能装的那几支，systemd 用户单元随装 |

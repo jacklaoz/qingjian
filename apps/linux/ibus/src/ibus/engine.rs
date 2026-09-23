@@ -7,14 +7,16 @@
 //! 与 Server 的收发是阻塞的（一问一答，200 毫秒截止），就在 async 处理函数里直接调：
 //! 输入法本来就按用户的按键串行，Fcitx5 插件也是在它的事件循环里同步收发。
 
-use qingjian_platform::protocol::KeyOutcome;
 use qingjian_platform::protocol::linux::Capabilities;
+use qingjian_platform::protocol::{KeyOutcome, SessionId};
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::Value;
 
+use super::poller::Poller;
 use super::variant;
 use super::view::View;
-use crate::client::{Reply, Shared};
+use crate::client::{Connection, Reply, Shared};
+use crate::error::IbusError;
 use crate::key;
 
 /// `UpdatePreeditText` 的 `mode`：焦点移走时把 preedit 清掉（ibus 的 `IBUS_ENGINE_PREEDIT_CLEAR`）。
@@ -75,23 +77,32 @@ pub struct IBusEngine {
 
     /// 自己的对象路径，同时当 Server 那边的上下文标识（要求非空、不超过 64 字节、同连接内不重复）。
     context: String,
+
+    /// 组句期间取重排结果的轮询；它的锁也把每次事件的「往返 + 重画」串起来。
+    poller: Poller,
 }
 
 impl IBusEngine {
     pub fn new(client: Shared, context: String) -> Self {
-        Self { client, context }
+        Self {
+            client,
+            context,
+            poller: Poller::default(),
+        }
     }
 
     /// 发一个事件给 Server，把回来的处置应用到面板上（上屏 + 重画），返回这次按键吃没吃掉。
+    /// 画完还在组句就起轮询，等本地整句模型的重排结果（见 [`Poller`]）。
     ///
     /// Server 连不上时**一律放行**：输入法连不上引擎是坏了，但不能连累用户连字母都打不出来。
     async fn apply(
         &self,
         emitter: &SignalEmitter<'_>,
         what: &str,
-        reply: Result<Reply, crate::error::IbusError>,
+        action: impl FnOnce(&mut Connection, SessionId) -> Result<Reply, IbusError>,
     ) -> bool {
-        let reply = match reply {
+        let mut polling = self.poller.lock().await;
+        let reply = match self.client.with_session(&self.context, action) {
             Ok(reply) => reply,
             Err(error) => {
                 tracing::warn!(%error, what, "与 Server 的一次往返失败，这个事件放行");
@@ -106,6 +117,14 @@ impl IBusEngine {
         if let Err(error) = present_frame(emitter, &reply.frame).await {
             tracing::warn!(%error, "更新候选窗失败");
         }
+        self.poller.follow(
+            &mut polling,
+            &reply.frame,
+            reply.revision,
+            emitter,
+            &self.client,
+            &self.context,
+        );
         reply.outcome == KeyOutcome::Consumed
     }
 }
@@ -125,12 +144,11 @@ impl IBusEngine {
     ) -> bool {
         let release = key::is_release(state);
         let event = key::to_key_event(keyval, state);
-        let reply = self
-            .client
-            .with_session(&self.context, |connection, session| {
+        let consumed = self
+            .apply(&emitter, "按键", |connection, session| {
                 connection.key(session, event, release)
-            });
-        let consumed = self.apply(&emitter, "按键", reply).await;
+            })
+            .await;
         // 排错时要看的是**事件之间的交错**（焦点、能力、按键谁先谁后），少了这一条就只能靠猜
         tracing::debug!(keyval, state, release, consumed, "按键");
         consumed
@@ -139,12 +157,10 @@ impl IBusEngine {
     /// 拿到焦点。
     async fn focus_in(&mut self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
         tracing::debug!(context = %self.context, "拿到焦点");
-        let reply = self
-            .client
-            .with_session(&self.context, |connection, session| {
-                connection.focus(session, true)
-            });
-        self.apply(&emitter, "焦点进入", reply).await;
+        self.apply(&emitter, "焦点进入", |connection, session| {
+            connection.focus(session, true)
+        })
+        .await;
     }
 
     /// 焦点离开：缓冲原样上屏，与 macOS 的 `commitComposition`、Windows 的 `Commit` 一致。
@@ -154,12 +170,10 @@ impl IBusEngine {
     /// 这是 IBus 那版真机验过的行为，换成 `true` 之前要在真机上确认。
     async fn focus_out(&mut self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
         tracing::debug!(context = %self.context, "焦点离开，结束组句");
-        let reply = self
-            .client
-            .with_session(&self.context, |connection, session| {
-                connection.deactivate(session, true, false, false)
-            });
-        self.apply(&emitter, "焦点离开", reply).await;
+        self.apply(&emitter, "焦点离开", |connection, session| {
+            connection.deactivate(session, true, false, false)
+        })
+        .await;
     }
 
     /// IBus 1.5 之后带对象路径与客户端名的那一对，行为同上。
@@ -183,12 +197,10 @@ impl IBusEngine {
 
     /// 应用要求重置：丢掉组句不上屏。
     async fn reset(&mut self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
-        let reply = self
-            .client
-            .with_session(&self.context, |connection, session| {
-                connection.reset(session)
-            });
-        self.apply(&emitter, "重置", reply).await;
+        self.apply(&emitter, "重置", |connection, session| {
+            connection.reset(session)
+        })
+        .await;
     }
 
     /// 应用说明这个输入框是干什么的（IBus 的 `IBusInputPurpose` / `IBusInputHints`）。
@@ -214,12 +226,10 @@ impl IBusEngine {
     }
 
     async fn disable(&mut self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
-        let reply = self
-            .client
-            .with_session(&self.context, |connection, session| {
-                connection.reset(session)
-            });
-        self.apply(&emitter, "停用", reply).await;
+        self.apply(&emitter, "停用", |connection, session| {
+            connection.reset(session)
+        })
+        .await;
         tracing::debug!("停用");
     }
 
@@ -243,6 +253,9 @@ impl IBusEngine {
     async fn property_activate(&mut self, _name: String, _state: u32) {}
 
     async fn destroy(&mut self) {
+        // 先停轮询：不然它下一拍会给已经销毁的上下文重开一个会话
+        let mut polling = self.poller.lock().await;
+        self.poller.stop(&mut polling);
         self.client.close(&self.context);
         tracing::debug!(context = %self.context, "引擎对象销毁");
     }
