@@ -107,6 +107,11 @@ Debian 13、Ubuntu 26.04、Fedora 42 容器里看过；`dpkg -i` 不补依赖，
 - **与用户级安装冲突**：`install.sh` 装在 `~/.local` 的那一份也叫 `qingjian-server.service`，组件名也相同。
   用户目录的单元优先于系统目录的，两份同时在时生效的是用户目录那份；装发行包之前先跑 `apps/linux/scripts/uninstall.sh`。
   flatpak 的登记脚本碰到这种情况会直接报错退出。
+  2026-09-23 本机踩过：装了 deb 没卸 `~/.local` 那份，IBus 拉起的是 deb 的新前端（协议 7），跑着的却是用户目录单元起的旧 Server
+  （协议 6），开会话就被断开、按键全部放行，切到青简打不出字；前端的输出进了 `/dev/null`，`--check` 按 PATH 又先找到 `~/.local/bin`
+  的旧前端、看上去是通的。现在两处会提醒：装包时 postinst / `%post` 发现有用户的 `~/.config/systemd/user/qingjian-server.service`
+  就打印卸法；Server 碰到版本不一致记 `前端开会话带的协议版本与 Server 不一致` 的警告（`journalctl --user -u qingjian-server`）。
+  确认跑的是哪一份：`systemctl --user show qingjian-server -p FragmentPath`。
 - **flatpak 的两个进程要共用一个 socket**：Server 与 IBus 前端是两个沙箱实例，各自的 `$XDG_RUNTIME_DIR` 不通。
   包里的 `qingjian-server` / `qingjian-ibus` 两个包装脚本把 `QINGJIAN_SOCKET` 指到 `$XDG_RUNTIME_DIR/app/$FLATPAK_ID/`，
   那是同一应用所有实例共享的目录。

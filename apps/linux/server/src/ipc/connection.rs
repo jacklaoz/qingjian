@@ -145,7 +145,17 @@ pub(super) fn serve_connection(
                     app,
                     protocol,
                 } => {
-                    if protocol != PROTOCOL_VERSION || sessions.contains_key(&local) {
+                    if protocol != PROTOCOL_VERSION {
+                        // 前端与 Server 不是同一版装的（比如用户目录里 install.sh 的旧 Server 盖着发行包的新前端）：
+                        // 断开之后前端的按键一律放行、打不出中文，日志里不留一句的话很难查
+                        tracing::warn!(
+                            protocol,
+                            expected = PROTOCOL_VERSION,
+                            "前端开会话带的协议版本与 Server 不一致，断开；前端与 Server 要是同一版"
+                        );
+                        break;
+                    }
+                    if sessions.contains_key(&local) {
                         break;
                     }
                     let global = SessionId(NEXT_SESSION.fetch_add(1, Ordering::Relaxed));
