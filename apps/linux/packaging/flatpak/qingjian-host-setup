@@ -1,0 +1,83 @@
+#!/bin/sh
+# 在沙箱里打印一段在**宿主机**上跑的 bash 脚本，登记 / 撤销青简 flatpak 版（都在用户目录，不用 sudo）：
+#   flatpak run app.qingjian.Qingjian | bash               登记
+#   flatpak run app.qingjian.Qingjian --uninstall | bash   撤销（flatpak uninstall 之前跑）
+# 登记的三样：IBus 组件 XML、让 IBus 看得到它的 environment.d 片段、Server 的 systemd 用户服务。
+# 直接在终端里跑（没接管道）只打印用法。
+if [ -t 1 ]; then
+  cat <<'USAGE'
+青简 flatpak 版要在宿主机上登记一次（不用 sudo）：
+  flatpak run app.qingjian.Qingjian | bash
+然后重新登录，在「设置 → 键盘 → 输入源」里添加「青简」。
+
+卸载前先撤销登记：
+  flatpak run app.qingjian.Qingjian --uninstall | bash
+  flatpak uninstall app.qingjian.Qingjian
+USAGE
+  exit 0
+fi
+
+cat <<'COMMON'
+set -e
+app=app.qingjian.Qingjian
+data="${XDG_DATA_HOME:-$HOME/.local/share}"
+config="${XDG_CONFIG_HOME:-$HOME/.config}"
+unit="$config/systemd/user/qingjian-server.service"
+component="$data/ibus/component/qingjian.xml"
+environment="$config/environment.d/qingjian-ibus.conf"
+COMMON
+
+if [ "${1:-}" = --uninstall ]; then
+  cat <<'UNINSTALL'
+systemctl --user disable --now qingjian-server.service 2>/dev/null || true
+# 只删我们登记的：文件里写着 flatpak 的应用 id
+for file in "$unit" "$component" "$environment"; do
+  if [ -f "$file" ] && grep -q "$app" "$file"; then rm -f "$file"; fi
+done
+systemctl --user daemon-reload
+echo '已撤销登记。接着 flatpak uninstall app.qingjian.Qingjian；学习数据在 ~/.var/app/app.qingjian.Qingjian/，要删请手动删。'
+UNINSTALL
+  exit 0
+fi
+
+cat <<'INSTALL'
+flatpak_bin=$(command -v flatpak)
+# 同名的服务 / 组件是别的装法留下的（apps/linux/scripts/install.sh 装在用户目录的那一份），两份会互相顶
+for file in "$unit" "$component"; do
+  if [ -f "$file" ] && ! grep -q "$app" "$file"; then
+    echo "已经有一份不是 flatpak 装的青简：$file；先卸载那一份（apps/linux/scripts/uninstall.sh）" >&2
+    exit 1
+  fi
+done
+mkdir -p "$(dirname "$component")" "$(dirname "$environment")" "$(dirname "$unit")"
+sed "s|@FLATPAK@|$flatpak_bin|" > "$component" <<'XML'
+INSTALL
+cat /app/share/qingjian/ibus-component.xml
+cat <<'INSTALL'
+XML
+system_components=/usr/share/ibus/component
+[ -d "$system_components" ] || system_components=/usr/local/share/ibus/component
+# IBus 不读用户目录下的组件，只认这个变量；用户目录放最前面，同名组件以前面的为准
+cat > "$environment" <<ENV
+# 青简 flatpak 版（$app）登记的，flatpak run $app --uninstall | bash 删除
+IBUS_COMPONENT_PATH=$data/ibus/component:\${IBUS_COMPONENT_PATH:-$system_components}
+ENV
+cat > "$unit" <<UNIT
+[Unit]
+# 青简 flatpak 版（$app）的 Server，两个前端里 IBus 那个连它
+Description=青简输入法 Server（flatpak）
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=$flatpak_bin run --command=qingjian-server $app
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+UNIT
+systemctl --user daemon-reload
+systemctl --user enable --now qingjian-server.service
+echo '已登记，Server 已启动。重新登录一次（IBus 在会话开始时读组件目录），然后在「设置 → 键盘 → 输入源」里添加「青简」。'
+INSTALL

@@ -17,7 +17,8 @@ def digest(path):
 
 def parse_args():
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('action', choices=('install', 'uninstall'))
+    # resources：只把随包资源（样例 / 释义 / 等级 / emoji / 符号 + 校验过的产品数据）拷进给定目录，发行包打包用
+    parser.add_argument('action', choices=('install', 'uninstall', 'resources'))
     parser.add_argument('prefix')
     parser.add_argument('--root', help='仓库根，install 时必给')
     parser.add_argument('--server', help='Server 可执行文件')
@@ -63,12 +64,38 @@ def product_data(root, resources, files):
             files[resources / source.relative_to(root)] = source
 
 
+def resource_files(root, resources, sample):
+    """随包资源：目标路径 → 源文件。布局与 Server 的 paths::resource_root 对应（其下 assets/ 与 data/generated/）。"""
+    files = {}
+    for kind in ('sample', 'glossary', 'levels', 'emoji', 'symbol'):
+        for source in (root / 'assets' / kind).rglob('*'):
+            if source.is_file():
+                files[resources / source.relative_to(root)] = source
+    if not sample:
+        product_data(root, resources, files)
+    return files
+
+
+def copy_resources(root, resources, sample):
+    """发行包打包用：把资源原样拷进 resources（先清空），不写安装清单。"""
+    if resources.exists():
+        shutil.rmtree(resources)
+    for target, source in resource_files(root, resources, sample).items():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+
+
 def main():
     options = parse_args()
     prefix = Path(options.prefix)
     if not prefix.is_absolute() or prefix == Path('/'):
         raise SystemExit('需要非根绝对安装路径')
     prefix = prefix.resolve()
+    if options.action == 'resources':
+        if not options.root:
+            raise SystemExit('resources 要给 --root')
+        copy_resources(Path(options.root), prefix, options.sample)
+        return
     manifest = prefix / 'share/qingjian/install-manifest.json'
     old = json.loads(manifest.read_text()) if manifest.is_file() else {}
     if options.action == 'uninstall':
@@ -103,13 +130,7 @@ def main():
         files[config / 'environment.d/qingjian-ibus.conf'] = Path(options.ibus_env)
     if options.service:
         files[config / 'systemd/user/qingjian-server.service'] = Path(options.service)
-    resources = prefix / 'share/qingjian/resources'
-    for kind in ('sample', 'glossary', 'levels', 'emoji', 'symbol'):
-        for source in (root / 'assets' / kind).rglob('*'):
-            if source.is_file():
-                files[resources / source.relative_to(root)] = source
-    if not options.sample:
-        product_data(root, resources, files)
+    files.update(resource_files(root, prefix / 'share/qingjian/resources', options.sample))
     # 安装前先检查所有目标，避免覆盖其他来源的同名文件。
     for target in files:
         if target.is_symlink() or (target.exists() and (str(target) not in old or digest(target) != old[str(target)])):
