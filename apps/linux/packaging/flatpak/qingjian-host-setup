@@ -25,6 +25,9 @@ config="${XDG_CONFIG_HOME:-$HOME/.config}"
 unit="$config/systemd/user/qingjian-server.service"
 component="$data/ibus/component/qingjian.xml"
 environment="$config/environment.d/qingjian-ibus.conf"
+# ibus-daemon 的注册表缓存只看缓存里记着的目录变没变，IBUS_COMPONENT_PATH 换了它不管：
+# 留着旧缓存，新加的目录（青简）可能看不到，缺了系统目录时 daemon 直接退出。登记、撤销都删掉让它重建。
+registry="${XDG_CACHE_HOME:-$HOME/.cache}/ibus/bus/registry"
 COMMON
 
 if [ "${1:-}" = --uninstall ]; then
@@ -34,6 +37,7 @@ systemctl --user disable --now qingjian-server.service 2>/dev/null || true
 for file in "$unit" "$component" "$environment"; do
   if [ -f "$file" ] && grep -q "$app" "$file"; then rm -f "$file"; fi
 done
+rm -f "$registry"
 systemctl --user daemon-reload
 echo '已撤销登记。接着 flatpak uninstall app.qingjian.Qingjian；学习数据在 ~/.var/app/app.qingjian.Qingjian/，要删请手动删。'
 UNINSTALL
@@ -55,13 +59,19 @@ INSTALL
 cat /app/share/qingjian/ibus-component.xml
 cat <<'INSTALL'
 XML
+command -v ibus-daemon >/dev/null || echo '注意：宿主机还没装 IBus（ibus-daemon），青简的 flatpak 版要靠它；装好后重新登录。' >&2
+# 只有 IBus 确实装在 /usr/local 下才换过去：登记时 IBus 可能还没装，那时两处都不存在，
+# 退到 /usr/local 的话之后装上的系统组件（dconf 配置程序）就不在路径里，ibus-daemon 起不来（Arch 上踩过）
 system_components=/usr/share/ibus/component
-[ -d "$system_components" ] || system_components=/usr/local/share/ibus/component
+if [ ! -d "$system_components" ] && [ -d /usr/local/share/ibus/component ]; then
+  system_components=/usr/local/share/ibus/component
+fi
 # IBus 不读用户目录下的组件，只认这个变量；用户目录放最前面，同名组件以前面的为准
 cat > "$environment" <<ENV
 # 青简 flatpak 版（$app）登记的，flatpak run $app --uninstall | bash 删除
 IBUS_COMPONENT_PATH=$data/ibus/component:\${IBUS_COMPONENT_PATH:-$system_components}
 ENV
+rm -f "$registry"
 cat > "$unit" <<UNIT
 [Unit]
 # 青简 flatpak 版（$app）的 Server，两个前端里 IBus 那个连它

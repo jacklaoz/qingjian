@@ -142,8 +142,10 @@ if [[ "$want_ibus" == true ]]; then
   # 用 environment.d 在会话启动时把用户目录加进去；**用户目录放最前面**：两个目录里有同名组件时
   # 以排在前面的为准（也验过），装过旧版 deb 的机器上新装的才会生效。
   data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+  # 只有 IBus 确实装在 /usr/local 下才换过去：装青简时 IBus 可能还没装，那时两处都不存在，
+  # 退到 /usr/local 的话之后装上的系统组件（dconf 配置程序）就不在路径里，ibus-daemon 起不来（Arch 上踩过）
   system_components=/usr/share/ibus/component
-  [[ -d "$system_components" ]] || system_components=/usr/local/share/ibus/component
+  [[ ! -d "$system_components" && -d /usr/local/share/ibus/component ]] && system_components=/usr/local/share/ibus/component
   cat > "$staged/qingjian-ibus.conf" <<ENV
 # 青简 IBus 前端（apps/linux/scripts/install.sh 生成，uninstall.sh 删除）。
 # IBus 不读用户目录下的组件，只认这个变量；用户目录放最前面，同名组件以前面的为准。
@@ -158,6 +160,9 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 python3 "$repo_root/apps/linux/scripts/files.py" "${files_args[@]}"
+# ibus-daemon 的注册表缓存只看缓存里记着的目录变没变，IBUS_COMPONENT_PATH 换了它不管：
+# 留着旧缓存，新加的目录（青简）可能看不到，缺了系统目录时 daemon 直接退出。删掉让它按新路径重建。
+[[ "$want_ibus" != true ]] || rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/ibus/bus/registry"
 
 echo '已安装：'
 [[ "$want_fcitx5" != true ]] || echo "  fcitx5 插件  $install_prefix/lib/fcitx5/qingjian.so"

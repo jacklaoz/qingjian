@@ -67,6 +67,10 @@ flatpak run app.qingjian.Qingjian | bash      # 在宿主机上登记（不用 s
 登记做三件事，都在用户目录：IBus 组件 XML、把它加进 `IBUS_COMPONENT_PATH` 的 environment.d 片段、
 `ExecStart=flatpak run …` 的 systemd 用户服务（并立即启动）。卸载前先 `flatpak run app.qingjian.Qingjian --uninstall | bash`。
 
+KDE Plasma（Wayland）上输入法由 KWin 拉起，默认是 fcitx5：「系统设置 → 键盘 → 虚拟键盘」里选 IBus Wayland
+（等于 `kwriteconfig6 --file kwinrc --group Wayland --key InputMethod /usr/share/applications/org.freedesktop.IBus.Panel.Wayland.Gtk3.desktop`），
+装了 fcitx5 的再把它的自启关掉，重新登录。
+
 ### 装完之后
 
 - IBus：「设置 → 键盘 → 输入源」添加「青简」（GNOME），或 `ibus engine qingjian`。
@@ -87,7 +91,8 @@ flatpak run app.qingjian.Qingjian | bash      # 在宿主机上登记（不用 s
 | flatpak | 本机（Ubuntu 26.04） | 两个沙箱实例经共享目录的 socket 连通，自检出候选；沙箱里的 IBus 前端连上 `~/.cache/ibus` 下的私有 ibus-daemon 并注册了工厂；登记脚本语法通过 |
 
 容器里没有图形会话，**真会话里切到青简打字没验**：这一步要在别的机器上装了之后手测，判据见 [linux-dual-frontend.md](linux-dual-frontend.md) 第二节。
-flatpak 的宿主机登记脚本（写组件、environment.d、systemd 服务）也只验了语法，没在真机上跑过。
+flatpak 的宿主机登记脚本 2026-09-23 在 Arch（KDE Plasma Wayland，IBus 1.5.34）真机上跑过：组件、environment.d、服务都登记上，
+Server 起来，`--check` 出候选，IBus 列得出「青简」（途中踩了下面的注册表缓存坑）。
 
 ### fcitx5 的依赖与切换框架
 
@@ -112,6 +117,12 @@ Debian 13、Ubuntu 26.04、Fedora 42 容器里看过；`dpkg -i` 不补依赖，
   的旧前端、看上去是通的。现在两处会提醒：装包时 postinst / `%post` 发现有用户的 `~/.config/systemd/user/qingjian-server.service`
   就打印卸法；Server 碰到版本不一致记 `前端开会话带的协议版本与 Server 不一致` 的警告（`journalctl --user -u qingjian-server`）。
   确认跑的是哪一份：`systemctl --user show qingjian-server -p FragmentPath`。
+- **IBus 的注册表缓存不跟 `IBUS_COMPONENT_PATH` 走**：ibus-daemon 把组件缓存在 `~/.cache/ibus/bus/registry`，
+  下次启动只看缓存里记着的那几个目录变没变，路径变量换了它不管。2026-09-23 在 Arch（KDE Plasma）上踩过：先登记 flatpak 版、
+  后 `pacman -S ibus`，登记时 `/usr/share/ibus/component` 还不存在，脚本退到了 `/usr/local/...`；会话里的 daemon 按这个路径写了缓存，
+  里面没有系统组件目录，之后每次启动都找不到 dconf 配置组件，报 `Can not execute default config program` 退出，
+  界面上是「IBus 守护进程 5 秒内无法启动」，重新登录、改对变量都没用，删掉缓存才好。现在登记脚本与 `install.sh` 只在
+  `/usr/local` 下确实有 IBus 时才换目录，登记与撤销都删掉这份缓存；flatpak 登记时宿主机没装 IBus 会提醒。
 - **flatpak 的两个进程要共用一个 socket**：Server 与 IBus 前端是两个沙箱实例，各自的 `$XDG_RUNTIME_DIR` 不通。
   包里的 `qingjian-server` / `qingjian-ibus` 两个包装脚本把 `QINGJIAN_SOCKET` 指到 `$XDG_RUNTIME_DIR/app/$FLATPAK_ID/`，
   那是同一应用所有实例共享的目录。
