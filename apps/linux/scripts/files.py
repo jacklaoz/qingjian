@@ -62,6 +62,12 @@ def product_data(root, resources, files):
             if source.resolve() not in verified:
                 raise SystemExit(f'产品数据没有校验记录：{source}')
             files[resources / source.relative_to(root)] = source
+    model = root / 'data/model/model.qjm'
+    if not model.is_file():
+        raise SystemExit('缺少本地整句模型 data/model/model.qjm，请先运行 tools/release/data-fetch.sh，或用 --sample 体验样例词库')
+    if digest(model) != lock.get('model.qjm'):
+        raise SystemExit('本地整句模型与 tools/release/data.lock 校验值不符')
+    files[resources / 'data/model/model.qjm'] = model
 
 
 def resource_files(root, resources, sample):
