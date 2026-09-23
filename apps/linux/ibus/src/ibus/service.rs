@@ -62,11 +62,14 @@ fn address_from_file() -> Option<String> {
     scan_bus_dir(&dir)
 }
 
-/// 算不出文件名时扫整个目录，取第一个 daemon 还活着、而且真写了地址的。
+/// 算不出文件名（或那个文件是空的）时扫整个目录：先取 daemon 还活着、真写了地址的；
+/// 一个都认不出活的，再取 socket 文件确实在的。
 ///
-/// flatpak 沙箱里通常没有 `WAYLAND_DISPLAY` / `DISPLAY`（清单没开这两个 socket），总走这条路；
-/// 目录里常躺着 X11 会话留下的 `…-unix-0`，两行都是空的（`IBUS_ADDRESS=`、`IBUS_DAEMON_PID=`），
-/// 按字典序还排在当前会话的 `…-unix-wayland-0` 前面——读出空地址就直接去连，引擎起不来（真机上踩过）。
+/// flatpak 沙箱里通常没有 `WAYLAND_DISPLAY`（清单没开 wayland socket），总走这条路，而且有两处坑（本机端到端时都踩过）：
+/// - 目录里常躺着 X11 会话留下的 `…-unix-0`，两行都是空的（`IBUS_ADDRESS=`、`IBUS_DAEMON_PID=`），
+///   按字典序还排在当前会话的 `…-unix-wayland-0` 前面——读出空地址就直接去连，引擎起不来；
+/// - 沙箱有自己的 PID 命名空间，宿主机 daemon 的 PID 在 `/proc` 里看不到，按 PID 判活一律判死；
+///   socket 文件倒是看得到（清单给了 `~/.cache/ibus` 与 `$XDG_RUNTIME_DIR/ibus` 的只读权限）。
 fn scan_bus_dir(dir: &Path) -> Option<String> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
         .ok()?
@@ -79,6 +82,20 @@ fn scan_bus_dir(dir: &Path) -> Option<String> {
         .iter()
         .filter(|path| daemon_alive(path))
         .find_map(|path| read_address(path))
+        .or_else(|| {
+            files
+                .iter()
+                .filter_map(|path| read_address(path))
+                .find(|address| socket_exists(address))
+        })
+}
+
+/// `unix:path=…` 的地址，socket 文件在不在；抽象 socket（`unix:abstract=…`）看不出来，算不在。
+fn socket_exists(address: &str) -> bool {
+    address
+        .split(',')
+        .find_map(|part| part.strip_prefix("unix:path="))
+        .is_some_and(|path| Path::new(path).exists())
 }
 
 /// ibus 算地址文件名的规矩（见 ibus 的 `ibus_get_socket_path`）：
@@ -304,6 +321,36 @@ mod tests {
         )
         .unwrap();
         assert_eq!(scan_bus_dir(&dir).as_deref(), Some("unix:path=/live"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// flatpak 沙箱里的现场：宿主机 daemon 的 PID 在沙箱里看不到（按 PID 判活判死），
+    /// 这时认 socket 文件确实在的那个地址。
+    #[test]
+    fn scan_falls_back_to_existing_socket() {
+        let dir =
+            std::env::temp_dir().join(format!("qingjian-ibus-sandbox-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let socket = dir.join("dbus-live");
+        std::fs::write(&socket, "").unwrap();
+        std::fs::write(
+            dir.join("machine-unix-0"),
+            "IBUS_ADDRESS=\nIBUS_DAEMON_PID=\n",
+        )
+        .unwrap();
+        // PID 取一个几乎不可能存在的值，演「沙箱里看不到」
+        std::fs::write(
+            dir.join("machine-unix-wayland-0"),
+            format!(
+                "IBUS_ADDRESS=unix:path={},guid=abc\nIBUS_DAEMON_PID=4194300\n",
+                socket.display()
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            scan_bus_dir(&dir),
+            Some(format!("unix:path={},guid=abc", socket.display()))
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }
