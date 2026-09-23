@@ -72,6 +72,9 @@ cat > "$environment" <<ENV
 IBUS_COMPONENT_PATH=$data/ibus/component:\${IBUS_COMPONENT_PATH:-$system_components}
 ENV
 rm -f "$registry"
+# 给沙箱里的 Server 发 SIGTERM（它退出前把学习数据写盘），最多等 5 秒。按宿主机上看到的命令行找：
+# IBus 前端是 qingjian-linux-ibus，匹配不上；写进单元的不能带 $（systemd 会当变量展开），用 %U
+stop_server='/bin/sh -c "pkill -TERM -u %U -f ^/app/bin/qingjian-linux-server; timeout 5 sh -c \"while pgrep -u %U -f ^/app/bin/qingjian-linux-server >/dev/null; do sleep 0.1; done\"; true"'
 cat > "$unit" <<UNIT
 [Unit]
 # 青简 flatpak 版（$app）的 Server，两个前端里 IBus 那个连它
@@ -80,7 +83,12 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=$flatpak_bin run --command=qingjian-server $app
+# flatpak run 把沙箱挪进它自己的 app-flatpak-….scope，不在这个服务的 cgroup 里：停服务时 systemd 只杀得到外层的 bwrap，
+# 里面的 Server 留下来占着 socket，之后起的都报 server already running（Arch 上踩过）。所以停之前自己去停 Server，
+# 起之前也清一遍（旧版单元留下的）；--die-with-parent 兜底：外层 bwrap 没了，里面跟着退。
+ExecStartPre=$stop_server
+ExecStart=$flatpak_bin run --die-with-parent --command=qingjian-server $app
+ExecStop=$stop_server
 Restart=on-failure
 RestartSec=2
 
