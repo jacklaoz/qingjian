@@ -59,7 +59,16 @@ fn address_from_file() -> Option<String> {
         return Some(address);
     }
     tracing::debug!("按规则算的地址文件不在，退回扫目录");
-    let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
+    scan_bus_dir(&dir)
+}
+
+/// 算不出文件名时扫整个目录，取第一个 daemon 还活着、而且真写了地址的。
+///
+/// flatpak 沙箱里通常没有 `WAYLAND_DISPLAY` / `DISPLAY`（清单没开这两个 socket），总走这条路；
+/// 目录里常躺着 X11 会话留下的 `…-unix-0`，两行都是空的（`IBUS_ADDRESS=`、`IBUS_DAEMON_PID=`），
+/// 按字典序还排在当前会话的 `…-unix-wayland-0` 前面——读出空地址就直接去连，引擎起不来（真机上踩过）。
+fn scan_bus_dir(dir: &Path) -> Option<String> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
         .ok()?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
@@ -68,8 +77,8 @@ fn address_from_file() -> Option<String> {
     files.sort();
     files
         .iter()
-        .find(|path| daemon_alive(path))
-        .and_then(|path| read_address(path))
+        .filter(|path| daemon_alive(path))
+        .find_map(|path| read_address(path))
 }
 
 /// ibus 算地址文件名的规矩（见 ibus 的 `ibus_get_socket_path`）：
@@ -128,9 +137,12 @@ fn daemon_alive(path: &Path) -> bool {
 /// 地址文件是几行 `键=值`，要的是 `IBUS_ADDRESS`。
 fn read_address(path: &Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
+    // 空地址当没有：X11 会话留下的陈旧文件里就是 `IBUS_ADDRESS=` 一行空值
     content.lines().find_map(|line| {
         line.strip_prefix("IBUS_ADDRESS=")
-            .map(|address| address.trim().to_owned())
+            .map(str::trim)
+            .filter(|address| !address.is_empty())
+            .map(str::to_owned)
     })
 }
 
@@ -258,6 +270,40 @@ mod tests {
         let path = dir.join("machine-unix-0");
         std::fs::write(&path, "IBUS_DAEMON_PID=1234\n").unwrap();
         assert!(read_address(&path).is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 写了 `IBUS_ADDRESS=` 但值是空的，也不能当地址用。
+    #[test]
+    fn blank_address_is_none() {
+        let dir = std::env::temp_dir().join(format!("qingjian-ibus-blank-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("machine-unix-0");
+        std::fs::write(&path, "IBUS_ADDRESS=\nIBUS_DAEMON_PID=\n").unwrap();
+        assert!(read_address(&path).is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 真机上的现场：两行都空的 `…-unix-0` 按字典序排在当前会话的 `…-unix-wayland-0` 前面，
+    /// 扫目录要跳过它、取到后面那个。
+    #[test]
+    fn scan_skips_blank_address_files() {
+        let dir = std::env::temp_dir().join(format!("qingjian-ibus-scan-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("machine-unix-0"),
+            "IBUS_ADDRESS=\nIBUS_DAEMON_PID=\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("machine-unix-wayland-0"),
+            format!(
+                "IBUS_ADDRESS=unix:path=/live\nIBUS_DAEMON_PID={}\n",
+                std::process::id()
+            ),
+        )
+        .unwrap();
+        assert_eq!(scan_bus_dir(&dir).as_deref(), Some("unix:path=/live"));
         std::fs::remove_dir_all(&dir).ok();
     }
 }
