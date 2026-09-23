@@ -2,7 +2,21 @@
 # 冒充输入法前端对 Server 打一串键，打印最后一帧的前几个候选；有候选退出码 0。
 # 不经过输入法框架，用来确认 Server 起着、词库找得到：python3 check.py [拼音]（缺省 nihao）
 # 消息顺序：开会话 → 握手 → 能力 → 焦点 → 逐键 → 失焦 → 关会话；每条消息是 4 字节小端长度 + JSON。
-import json, os, socket, struct, sys
+import json, os, re, socket, struct, sys
+from pathlib import Path
+
+
+def protocol_version():
+    """开会话带的协议版本，Server 不等就断开：优先 QINGJIAN_PROTOCOL（run.sh 传进容器），否则从仓库的 Rust 源码读。"""
+    if os.environ.get('QINGJIAN_PROTOCOL'):
+        return int(os.environ['QINGJIAN_PROTOCOL'])
+    source = Path(__file__).resolve().parents[4] / 'crates/qingjian-platform/src/protocol/mod.rs'
+    found = re.search(r'^pub const PROTOCOL_VERSION: u32 = (\d+);', source.read_text(), re.M) if source.is_file() else None
+    if not found:
+        raise SystemExit('不知道协议版本：在仓库里运行，或设 QINGJIAN_PROTOCOL')
+    return int(found.group(1))
+
+
 typed = sys.argv[1] if len(sys.argv) > 1 else 'nihao'
 path = os.environ.get('QINGJIAN_SOCKET') or os.path.join(os.environ.get('XDG_RUNTIME_DIR', '/tmp'), 'qingjian.sock')
 s = socket.socket(socket.AF_UNIX); s.connect(path)
@@ -18,7 +32,7 @@ def call(msg, reply=True):
     if reply:
         return json.loads(recv_exact(struct.unpack('<I', recv_exact(4))[0]))
 ev = lambda e: {'LinuxEvent': {'event': e, 'session': 1}}
-call({'OpenSession': {'app': None, 'protocol': 6, 'session': 1}})
+call({'OpenSession': {'app': None, 'protocol': protocol_version(), 'session': 1}})
 call({'LinuxHello': {'context': '/qingjian/smoke', 'generation': 1, 'session': 1, 'version': 3}})
 call(ev({'Capabilities': {'disabled': False, 'password': False, 'sensitive': False}}))
 call(ev({'Focus': {'focused': True}}))

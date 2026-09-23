@@ -7,12 +7,14 @@ set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 out=$(cd -- "$here/../../../.." && pwd)/target/linux-pkg/out
 failed=0
+# check.py 开会话要带协议版本，容器里没有仓库，从这边的源码读好传进去
+protocol=$(sed -n 's/^pub const PROTOCOL_VERSION: u32 = \([0-9]*\);$/\1/p' "$here/../../../../crates/qingjian-platform/src/protocol/mod.rs")
 for spec in 'debian:trixie apt deb' 'ubuntu:26.04 apt deb' 'fedora:42 dnf rpm' 'fedora:latest dnf rpm' 'opensuse/tumbleweed zypper rpm'; do
   read -r image manager format <<<"$spec"
   pkgs=$(mktemp -d)
   cp "$out"/*."$format" "$pkgs/"
   echo "######## $image"
-  docker run --rm -v "$pkgs:/pkgs:ro" -v "$here/install.sh:/install.sh:ro" -v "$here/check.py:/check.py:ro" \
+  docker run --rm -e QINGJIAN_PROTOCOL="$protocol" -v "$pkgs:/pkgs:ro" -v "$here/install.sh:/install.sh:ro" -v "$here/check.py:/check.py:ro" \
     "$image" bash /install.sh "$manager" || failed=1
   rm -rf "$pkgs"
 done
