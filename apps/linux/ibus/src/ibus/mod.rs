@@ -7,12 +7,13 @@
 //! [`Frame`](qingjian_platform::protocol::Frame) 折成「preedit 什么样、候选表什么样、辅助行写什么」。
 //! D-Bus 服务在 [`engine`] 与 [`factory`]，总线地址的找法在 [`service`]。
 //!
-//! 没有「主循环重画」这一层：Linux Server 不推送（协议是严格的一问一答，云联想与神经重排
-//! 也没接进 Linux），每一帧都是某次事件的回包，所以帧只会在处理事件时出现。
+//! Linux Server 不推送（协议是严格的一问一答）：帧大多是某次事件的回包；本地整句模型的重排结果
+//! 要前端在组句期间自己来取，那一层在 [`poller`]，与 Fcitx5 插件的定时 `Poll` 同一个做法。
 
 pub mod component;
 pub mod engine;
 pub mod factory;
+pub mod poller;
 pub mod service;
 pub mod variant;
 pub mod view;

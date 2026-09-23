@@ -149,6 +149,13 @@ impl Connection {
         self.event(session, LinuxEvent::Reset)
     }
 
+    /// 组句期间取一次最新的帧：本地整句模型的重排结果从这里来（Server 不推送）。
+    /// 回的是 `Update`，帧没变时版本号与上次相同。
+    pub fn poll(&mut self, session: SessionId) -> Result<Reply, IbusError> {
+        let message = serde_json::to_value(ClientMessage::Poll { session })?;
+        Reply::from_value(self.request(&message)?)
+    }
+
     /// 关掉一个会话。没有回包。
     pub fn close_session(&mut self, session: SessionId) -> Result<(), IbusError> {
         let message = serde_json::to_value(ClientMessage::CloseSession { session })?;
