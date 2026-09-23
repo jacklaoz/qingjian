@@ -55,6 +55,7 @@ impl Component for Settings {
             Message::Scheme(Some(i)) if i < general::SCHEMES.len() => {
                 self.save("general", "scheme", general::SCHEMES[i].1);
             }
+            Message::ShuangpinRawPreedit(on) => self.save("general", "shuangpin_raw_preedit", on),
             Message::Wubi(on) => self.save("general", "wubi", if on { "wubi86" } else { "" }),
             Message::Traditional(Some(i)) if i < general::TRADITIONAL.len() => {
                 self.save("general", "traditional", general::TRADITIONAL[i].1);

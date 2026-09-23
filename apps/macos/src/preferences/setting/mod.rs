@@ -137,6 +137,9 @@ pub enum Setting {
     /// `[general] scheme`，弹出菜单：全拼 + 五套双拼 + 大千注音 + 关。
     Scheme,
 
+    /// `[general] shuangpin_raw_preedit`，勾选框：双拼模式下输入框保留原始输入按键。
+    ShuangpinRawPreedit,
+
     /// `[general] wubi`，勾选框：勾上是五笔（86 版）。与拼音同时开着就是混输。
     Wubi,
 
@@ -214,7 +217,8 @@ impl Setting {
             Self::ImportDictionary => 19,
             Self::Scheme => 20,
             Self::Traditional => 47,
-            Self::Extras => 52,
+            Self::ShuangpinRawPreedit => 52,
+            Self::Extras => 53,
             Self::VerboseLog => 21,
             Self::OpenLogDirectory => 22,
             Self::CopyDiagnostics => 23,
@@ -277,7 +281,8 @@ impl Setting {
             20 => Self::Scheme,
             49 => Self::Wubi,
             47 => Self::Traditional,
-            52 => Self::Extras,
+            52 => Self::ShuangpinRawPreedit,
+            53 => Self::Extras,
             21 => Self::VerboseLog,
             22 => Self::OpenLogDirectory,
             23 => Self::CopyDiagnostics,
@@ -348,6 +353,7 @@ mod tests {
             Setting::ImportDictionary,
             Setting::Scheme,
             Setting::Wubi,
+            Setting::ShuangpinRawPreedit,
             Setting::Traditional,
             Setting::Extras,
             Setting::VerboseLog,
