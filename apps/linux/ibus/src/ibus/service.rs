@@ -3,6 +3,7 @@
 //! IBus 不走会话总线，自己起一条。地址三处找：ibus-daemon 拉起我们时设的 `IBUS_ADDRESS`
 //! 环境变量（正常情况走这条）、`ibus address` 会读的那个地址文件、以及用户手动指定的。
 
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
 use zbus::connection::Builder;
@@ -63,13 +64,16 @@ fn address_from_file() -> Option<String> {
 }
 
 /// 算不出文件名（或那个文件是空的）时扫整个目录：先取 daemon 还活着、真写了地址的；
-/// 一个都认不出活的，再取 socket 文件确实在的。
+/// 一个都认不出活的，再取 socket 真连得上的。
 ///
 /// flatpak 沙箱里通常没有 `WAYLAND_DISPLAY`（清单没开 wayland socket），总走这条路，而且有两处坑（本机端到端时都踩过）：
 /// - 目录里常躺着 X11 会话留下的 `…-unix-0`，两行都是空的（`IBUS_ADDRESS=`、`IBUS_DAEMON_PID=`），
 ///   按字典序还排在当前会话的 `…-unix-wayland-0` 前面——读出空地址就直接去连，引擎起不来；
 /// - 沙箱有自己的 PID 命名空间，宿主机 daemon 的 PID 在 `/proc` 里看不到，按 PID 判活一律判死；
-///   socket 文件倒是看得到（清单给了 `~/.cache/ibus` 与 `$XDG_RUNTIME_DIR/ibus` 的只读权限）。
+///   socket 倒是连得上（清单给了 `~/.cache/ibus` 与 `$XDG_RUNTIME_DIR/ibus` 的只读权限，连 socket 不用写）。
+///
+/// 只看 socket 文件在不在不够：ibus-daemon 退出时不删它，`~/.cache/ibus` 下常年堆着没人听的 socket，
+/// 陈旧的 `…-unix-0` 指着其中一个就会被挑中（Arch 上踩过，切到青简超时）。
 fn scan_bus_dir(dir: &Path) -> Option<String> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
         .ok()?
@@ -86,16 +90,17 @@ fn scan_bus_dir(dir: &Path) -> Option<String> {
             files
                 .iter()
                 .filter_map(|path| read_address(path))
-                .find(|address| socket_exists(address))
+                .find(|address| socket_listening(address))
         })
 }
 
-/// `unix:path=…` 的地址，socket 文件在不在；抽象 socket（`unix:abstract=…`）看不出来，算不在。
-fn socket_exists(address: &str) -> bool {
+/// `unix:path=…` 的地址有没有进程在听：真连一下，没人听的陈旧 socket 会被拒绝。
+/// 抽象 socket（`unix:abstract=…`）不试，算不在。
+fn socket_listening(address: &str) -> bool {
     address
         .split(',')
         .find_map(|part| part.strip_prefix("unix:path="))
-        .is_some_and(|path| Path::new(path).exists())
+        .is_some_and(|path| UnixStream::connect(path).is_ok())
 }
 
 /// ibus 算地址文件名的规矩（见 ibus 的 `ibus_get_socket_path`）：
@@ -325,17 +330,23 @@ mod tests {
     }
 
     /// flatpak 沙箱里的现场：宿主机 daemon 的 PID 在沙箱里看不到（按 PID 判活判死），
-    /// 这时认 socket 文件确实在的那个地址。
+    /// 这时认 socket 真连得上的那个地址；排在前面、指着没人听的旧 socket 的不认。
     #[test]
-    fn scan_falls_back_to_existing_socket() {
+    fn scan_falls_back_to_listening_socket() {
         let dir =
             std::env::temp_dir().join(format!("qingjian-ibus-sandbox-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let socket = dir.join("dbus-live");
-        std::fs::write(&socket, "").unwrap();
+        let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        // daemon 退出后留下的：socket 文件还在，没人听
+        let stale = dir.join("dbus-stale");
+        drop(std::os::unix::net::UnixListener::bind(&stale).unwrap());
         std::fs::write(
             dir.join("machine-unix-0"),
-            "IBUS_ADDRESS=\nIBUS_DAEMON_PID=\n",
+            format!(
+                "IBUS_ADDRESS=unix:path={},guid=old\nIBUS_DAEMON_PID=4194301\n",
+                stale.display()
+            ),
         )
         .unwrap();
         // PID 取一个几乎不可能存在的值，演「沙箱里看不到」

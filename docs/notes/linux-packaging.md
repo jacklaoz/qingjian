@@ -123,6 +123,14 @@ Debian 13、Ubuntu 26.04、Fedora 42 容器里看过；`dpkg -i` 不补依赖，
   里面没有系统组件目录，之后每次启动都找不到 dconf 配置组件，报 `Can not execute default config program` 退出，
   界面上是「IBus 守护进程 5 秒内无法启动」，重新登录、改对变量都没用，删掉缓存才好。现在登记脚本与 `install.sh` 只在
   `/usr/local` 下确实有 IBus 时才换目录，登记与撤销都删掉这份缓存；flatpak 登记时宿主机没装 IBus 会提醒。
+- **flatpak 版 Server 停不掉**：`flatpak run` 把沙箱挪进它自己的 `app-flatpak-….scope`，不在服务的 cgroup 里，
+  `systemctl --user stop/restart` 只杀到外层 bwrap，沙箱里的 Server 留下来占着 socket，新起的报 `server already running`、
+  `Restart=on-failure` 每 2 秒转一圈（2026-09-23 Arch 上换包后 restart 一次就转了 90 多次，跑着的一直是旧版）。
+  登记脚本写的单元现在 `ExecStop` / `ExecStartPre` 按宿主机命令行 `^/app/bin/qingjian-linux-server` 发 SIGTERM
+  （Server 退出前把学习数据写盘）并等它退，`--die-with-parent` 兜底；同一台机上 stop / start / restart 各试过，不再残留。
+- **沙箱里挑 IBus 地址不能只看 socket 文件在不在**：ibus-daemon 退出不删 socket，`~/.cache/ibus` 下常年一堆死的；
+  陈旧的 `…-unix-0` 按字典序排在 `…-unix-wayland-0` 前面，指着一个死 socket，前端连它失败，切到青简 `SetGlobalEngine` 超时。
+  现在真 connect 一下，连得上才认。
 - **flatpak 的两个进程要共用一个 socket**：Server 与 IBus 前端是两个沙箱实例，各自的 `$XDG_RUNTIME_DIR` 不通。
   包里的 `qingjian-server` / `qingjian-ibus` 两个包装脚本把 `QINGJIAN_SOCKET` 指到 `$XDG_RUNTIME_DIR/app/$FLATPAK_ID/`，
   那是同一应用所有实例共享的目录。
