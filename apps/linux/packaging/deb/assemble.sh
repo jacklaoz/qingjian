@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# 在 Debian 13 容器里跑（build.sh 调，仓库挂在 /src）：编 fcitx5 插件，从二进制推出依赖，拼两个 .deb：
+# - qingjian：Server、词库与本地整句模型、systemd 用户服务（build.sh 已摆好在 $stage/qingjian）
+# - qingjian-fcitx5：fcitx5 插件
+set -euo pipefail
+stage=/src/target/linux-pkg/deb
+version=${DEB_VERSION:?}
+arch=$(dpkg --print-architecture)
+multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
+maintainer='Qingjian <https://qingjian.app>'
+
+build="$stage/fcitx5-build"
+cmake -S /src/apps/linux/fcitx5 -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF >/dev/null
+cmake --build "$build" --parallel >/dev/null
+fcitx="$stage/qingjian-fcitx5"
+# 插件放 fcitx5 自己的插件目录（Debian 是多架构路径），描述文件里 Library=qingjian 按名字找
+install -Dm644 "$build/qingjian.so" "$fcitx/usr/lib/$multiarch/fcitx5/qingjian.so"
+strip --strip-unneeded "$fcitx/usr/lib/$multiarch/fcitx5/qingjian.so"
+install -Dm644 /src/apps/linux/fcitx5/data/addon/qingjian.conf "$fcitx/usr/share/fcitx5/addon/qingjian.conf"
+install -Dm644 /src/apps/linux/fcitx5/data/inputmethod/qingjian.conf "$fcitx/usr/share/fcitx5/inputmethod/qingjian.conf"
+install -Dm644 /src/LICENSE "$fcitx/usr/share/doc/qingjian-fcitx5/copyright"
+
+core="$stage/qingjian"
+strip --strip-unneeded "$core/usr/bin/qingjian-linux-server"
+
+# 动态库依赖从二进制推（libc6 的最低版本、libfcitx5core7 这些），不手写；
+# dpkg-shlibdeps 只肯在带 debian/control 的目录里跑，给它一个最小的
+shlibs() {
+  local dir
+  dir=$(mktemp -d)
+  mkdir "$dir/debian"
+  printf 'Source: qingjian\n\nPackage: qingjian\nArchitecture: any\n' > "$dir/debian/control"
+  (cd "$dir" && dpkg-shlibdeps -O "$@" | sed -n 's/^shlibs:Depends=//p')
+  rm -rf "$dir"
+}
+
+# 权限归一：宿主机 umask 是 002 时拷出来的是 664 / 775
+normalize() {
+  find "$1" -type d -exec chmod 755 {} +
+  find "$1" -type f ! -path '*/usr/bin/*' -exec chmod 644 {} +
+}
+
+control() {
+  local dir=$1 name=$2 depends=$3 extra=$4 summary=$5 description=$6
+  mkdir -p "$dir/DEBIAN"
+  cat > "$dir/DEBIAN/control" <<CONTROL
+Package: $name
+Version: $version
+Architecture: $arch
+Maintainer: $maintainer
+Installed-Size: $(du -sk --exclude=DEBIAN "$dir" | cut -f1)
+Depends: $depends
+${extra}Section: utils
+Priority: optional
+Homepage: https://qingjian.app
+Description: $summary
+$description
+CONTROL
+}
+
+normalize "$core"
+control "$core" qingjian "$(shlibs "$core/usr/bin/qingjian-linux-server")" \
+  $'Recommends: qingjian-fcitx5\n' \
+  '青简输入法：Server 与词库' \
+  ' 跨平台拼音输入法。本包是引擎（Server，systemd 用户服务）、随包词库与本地整句模型；
+ 输入法前端在 qingjian-fcitx5。装完重新登录一次。'
+# Server 挂到每个用户的会话里自启（--global 只影响之后登录的会话，所以装完要重新登录）
+cat > "$core/DEBIAN/postinst" <<'SCRIPT'
+#!/bin/sh
+set -e
+if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
+  systemctl --global enable qingjian-server.service >/dev/null 2>&1 || true
+fi
+SCRIPT
+cat > "$core/DEBIAN/prerm" <<'SCRIPT'
+#!/bin/sh
+set -e
+if [ "$1" = remove ] && command -v systemctl >/dev/null 2>&1; then
+  systemctl --global disable qingjian-server.service >/dev/null 2>&1 || true
+fi
+SCRIPT
+chmod 755 "$core/DEBIAN/postinst" "$core/DEBIAN/prerm"
+
+normalize "$fcitx"
+control "$fcitx" qingjian-fcitx5 "qingjian (= $version), fcitx5, $(shlibs "$fcitx/usr/lib/$multiarch/fcitx5/qingjian.so")" '' \
+  '青简输入法的 fcitx5 插件' \
+  ' 让 fcitx5 能用青简；引擎在 qingjian 包里。装完重启 fcitx5，在配置工具里添加「青简」。'
+
+for dir in "$core" "$fcitx"; do
+  dpkg-deb --root-owner-group -Zxz --build "$dir" "$stage/$(basename "$dir")_${version}_${arch}.deb" >/dev/null
+done
+ls "$stage"/*.deb

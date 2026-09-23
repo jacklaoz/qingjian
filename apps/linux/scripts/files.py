@@ -14,40 +14,14 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def main():
-    action, prefix_text, *args = sys.argv[1:]
-    prefix = Path(prefix_text)
-    if not prefix.is_absolute() or prefix == Path('/'):
-        raise SystemExit('需要非根绝对安装路径')
-    prefix = prefix.resolve()
-    manifest = prefix / 'share/qingjian/install-manifest.json'
-    old = json.loads(manifest.read_text()) if manifest.is_file() else {}
-    if action == 'uninstall':
-        for filename, checksum in old.items():
-            path = Path(filename)
-            if path.is_file() and not path.is_symlink() and digest(path) == checksum:
-                path.unlink()
-            elif path.exists():
-                print(f'保留已修改文件：{path}')
-        manifest.unlink(missing_ok=True)
-        return
-    root, server, plugin, sample = args
-    root = Path(root)
-    data = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share')))
-    if not data.is_absolute():
-        raise SystemExit('XDG_DATA_HOME 必须是绝对路径')
-    files = {prefix / 'share/licenses/qingjian/LICENSE': root / 'LICENSE',
-             data / 'icons/hicolor/128x128/apps/qingjian.png': root / 'assets/icon/logo.png',
-             prefix / 'bin/qingjian-linux-server': Path(server),
-             prefix / 'lib/fcitx5/qingjian.so': Path(plugin)}
-    for kind in ('addon', 'inputmethod'):
-        files[data / f'fcitx5/{kind}/qingjian.conf'] = root / f'apps/linux/fcitx5/data/{kind}/qingjian.conf'
-    resources = prefix / 'share/qingjian/resources'
+def resource_files(root, resources, sample):
+    """随包资源：目标路径 → 源文件。布局与 Server 的 paths::resource_root 对应（其下 assets/ 与 data/）。"""
+    files = {}
     for kind in ('sample', 'glossary', 'levels', 'emoji'):
         for source in (root / 'assets' / kind).rglob('*'):
             if source.is_file():
                 files[resources / source.relative_to(root)] = source
-    if sample != 'true':
+    if not sample:
         generated = root / 'data/generated'
         dictionary = generated / 'dict.qj'
         archive = root / 'target/release-data/qingjian-data.tar.gz'
@@ -70,6 +44,9 @@ def main():
                 verified[source] = checksum
         wanted = ('dict.qj', 'lm.qj', 'lm-unigram.tsv', 'lm-bigram.tsv', 'english.tsv')
         for source in generated.rglob('*'):
+            # 点开头的是 macOS 打包混进来的 AppleDouble（`._dict.qj`），data-v1 发布包里有 19 个，不是产品数据
+            if source.name.startswith('.'):
+                continue
             if source.is_file() and (source.name in wanted or source.name.startswith('glossary-') or source.parent.name == 'dicts'):
                 if source.resolve() not in verified:
                     raise SystemExit(f'产品数据没有校验记录：{source}')
@@ -80,6 +57,47 @@ def main():
         if digest(model) != lock.get('model.qjm'):
             raise SystemExit('本地整句模型与 tools/release/data.lock 校验值不符')
         files[resources / 'data/model/model.qjm'] = model
+    return files
+
+
+def main():
+    action, prefix_text, *args = sys.argv[1:]
+    prefix = Path(prefix_text)
+    if not prefix.is_absolute() or prefix == Path('/'):
+        raise SystemExit('需要非根绝对安装路径')
+    prefix = prefix.resolve()
+    if action == 'resources':
+        # 发行包打包用（apps/linux/packaging）：只把随包资源拷进给定目录（先清空），不写安装清单
+        root, sample = args
+        if prefix.exists():
+            shutil.rmtree(prefix)
+        for target, source in resource_files(Path(root), prefix, sample == 'true').items():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+        return
+    manifest = prefix / 'share/qingjian/install-manifest.json'
+    old = json.loads(manifest.read_text()) if manifest.is_file() else {}
+    if action == 'uninstall':
+        for filename, checksum in old.items():
+            path = Path(filename)
+            if path.is_file() and not path.is_symlink() and digest(path) == checksum:
+                path.unlink()
+            elif path.exists():
+                print(f'保留已修改文件：{path}')
+        manifest.unlink(missing_ok=True)
+        return
+    root, server, plugin, sample = args
+    root = Path(root)
+    data = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share')))
+    if not data.is_absolute():
+        raise SystemExit('XDG_DATA_HOME 必须是绝对路径')
+    files = {prefix / 'share/licenses/qingjian/LICENSE': root / 'LICENSE',
+             data / 'icons/hicolor/128x128/apps/qingjian.png': root / 'assets/icon/logo.png',
+             prefix / 'bin/qingjian-linux-server': Path(server),
+             prefix / 'lib/fcitx5/qingjian.so': Path(plugin)}
+    for kind in ('addon', 'inputmethod'):
+        files[data / f'fcitx5/{kind}/qingjian.conf'] = root / f'apps/linux/fcitx5/data/{kind}/qingjian.conf'
+    files.update(resource_files(root, prefix / 'share/qingjian/resources', sample == 'true'))
     # 安装前先检查所有目标，避免覆盖其他来源的同名文件。
     for target in files:
         if target.is_symlink() or (target.exists() and (str(target) not in old or digest(target) != old[str(target)])):

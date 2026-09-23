@@ -1,0 +1,15 @@
+[Unit]
+# 青简的 Server：引擎在这里，fcitx5 插件连它。发行包装在 /usr/lib/systemd/user/，装包时 systemctl --global enable。
+Description=青简输入法 Server
+Documentation=https://qingjian.app
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/qingjian-linux-server
+# 崩了自己起来：输入法停了用户就打不出字，而 Server 的状态（组句）本来就是一次性的
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
