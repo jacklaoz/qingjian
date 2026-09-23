@@ -72,7 +72,7 @@ cat > "$core/DEBIAN/postinst" <<'SCRIPT'
 set -e
 if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
   systemctl --global enable qingjian-server.service >/dev/null 2>&1 || true
-  for user in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+  loginctl list-users --no-legend 2>/dev/null | while read -r _ user _; do
     systemctl --user -M "$user@" daemon-reload >/dev/null 2>&1 || true
     systemctl --user -M "$user@" restart qingjian-server.service >/dev/null 2>&1 || true
   done
@@ -83,7 +83,7 @@ cat > "$core/DEBIAN/prerm" <<'SCRIPT'
 set -e
 if [ "$1" = remove ] && command -v systemctl >/dev/null 2>&1; then
   systemctl --global disable qingjian-server.service >/dev/null 2>&1 || true
-  for user in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+  loginctl list-users --no-legend 2>/dev/null | while read -r _ user _; do
     systemctl --user -M "$user@" stop qingjian-server.service >/dev/null 2>&1 || true
   done
 fi

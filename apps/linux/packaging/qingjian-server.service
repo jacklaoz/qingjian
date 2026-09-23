@@ -3,6 +3,9 @@
 Description=青简输入法 Server
 Documentation=https://qingjian.app
 After=graphical-session.target
+# 登录界面（gdm 这类系统账户）的会话里不起：发行包 --global enable 对所有用户生效，greeter 用不着输入法引擎，
+# 起了只是白白加载词库与模型
+ConditionUser=!@system
 
 [Service]
 Type=simple

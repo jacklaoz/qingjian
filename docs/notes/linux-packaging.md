@@ -82,3 +82,7 @@ apps/linux/packaging/smoke/run.sh
 10:51 装包、10:52 重新登录，用户实例是 10:46 起的一直没换，Server 一次都没起。所以 postinst / `%post` 对
 `loginctl list-users` 里的每个用户 `systemctl --user -M 用户@ daemon-reload` 与 `restart`（升级时也换上新的 Server），
 prerm / `%preun` 同样 stop。同一台机器上升级验过：装包那一秒 Server 就换成了新版，没有重新登录。
+
+- **`--global` 对登录界面也生效**：gdm 这类系统账户也有自己的用户会话（`loginctl list-users` 里能看到 `gdm`），
+  不拦的话 greeter 里也会起一个 Server、白白加载词库与模型。服务单元写 `ConditionUser=!@system` 跳过系统账户（systemd 237+）。
+  装包脚本取用户名用 shell 的 `read`，不靠 awk（openSUSE 最小容器里没有 awk）。
