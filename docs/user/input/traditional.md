@@ -19,8 +19,18 @@ description: 让候选与上屏的文字变成繁体：台湾正体、香港繁�
 
 台湾与香港的字形取舍不同（裡 / 裏、著 / 着），所以分开两档。改动立即生效，不必重新切换输入法。
 
-Linux 版没有偏好设置窗口，也不会自动读取改过的配置：改完配置文件里的 `traditional` 后运行
-`systemctl --user restart qingjian-server` 才生效。
+### Linux
+
+Linux 版没有偏好设置窗口，也不会自动读取改过的配置：改配置文件，再重启青简服务。以台湾正体为例：
+
+```bash
+sed -i 's/^traditional = .*/traditional = "taiwan"/' ~/.config/qingjian/config.toml
+systemctl --user restart qingjian-server
+```
+
+把 `taiwan` 换成 `hongkong` / `standard` 就是另外两档，改回 `off` 是简体；每次改完都要重启一次服务。
+IBus 与 fcitx5 两种装法都是这个文件。Flatpak 版的配置文件在 `~/.var/app/app.qingjian.Qingjian/config/qingjian/config.toml`，
+重启命令相同。
 
 ## 学习数据始终是简体
 

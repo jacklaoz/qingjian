@@ -71,6 +71,8 @@ flatpak run app.qingjian.Qingjian | bash      # 在宿主机上登记（不用 s
 
 - IBus：「设置 → 键盘 → 输入源」添加「青简」（GNOME），或 `ibus engine qingjian`。
 - fcitx5：`fcitx5-configtool` 里取消「仅显示当前语言」，添加「青简」。
+- 繁体：`~/.config/qingjian/config.toml` 的 `[general] traditional` 写 `taiwan` / `hongkong` / `standard`，
+  再 `systemctl --user restart qingjian-server`（Linux Server 不热加载配置）；flatpak 版的配置在 `~/.var/app/app.qingjian.Qingjian/config/qingjian/`。
 - 自检（不经过输入法框架，直接问 Server）：`qingjian-linux-ibus --check nihao`；
   flatpak 版是 `flatpak run --command=qingjian-ibus app.qingjian.Qingjian --check nihao`。
 - Server 状态与日志：`systemctl --user status qingjian-server`、`journalctl --user -u qingjian-server`。
@@ -86,6 +88,15 @@ flatpak run app.qingjian.Qingjian | bash      # 在宿主机上登记（不用 s
 
 容器里没有图形会话，**真会话里切到青简打字没验**：这一步要在别的机器上装了之后手测，判据见 [linux-dual-frontend.md](linux-dual-frontend.md) 第二节。
 flatpak 的宿主机登记脚本（写组件、environment.d、systemd 服务）也只验了语法，没在真机上跑过。
+
+### fcitx5 的依赖与切换框架
+
+`apt install ./…` / `dnf install ./…` 会把 fcitx5 与它的 GTK / Qt 输入法模块、配置工具一起装上（2026-09-23 在干净的
+Debian 13、Ubuntu 26.04、Fedora 42 容器里看过；`dpkg -i` 不补依赖，要再跑一次 `sudo apt -f install`）。
+**不会替你把输入法框架从 IBus 切到 fcitx5**，GNOME 默认是 IBus：
+
+- Debian / Ubuntu：`im-config -n fcitx5`，重新登录；
+- Fedora：装 `fcitx5-autostart`（`qingjian-fcitx5` 已经 Recommends 它，dnf 缺省会一起装），重新登录。
 
 ## 几处限制与坑
 

@@ -28,6 +28,8 @@ Recommends:     (ibus or qingjian-fcitx5)
 Summary:        青简输入法的 fcitx5 插件
 Requires:       %{name}%{?_isa} = %{version}-%{release}
 Requires:       fcitx5
+# Fedora 上没有它，登录时 fcitx5 不自己起、GNOME 仍走 IBus；别的发行版没有这个包时弱依赖直接忽略
+Recommends:     fcitx5-autostart
 
 %description fcitx5
 让 fcitx5 能用青简；引擎在 qingjian 包里。装完重启 fcitx5，在配置工具里添加「青简」。
