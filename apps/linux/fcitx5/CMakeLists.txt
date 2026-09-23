@@ -6,6 +6,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Fcitx5Core 5.1.8 REQUIRED)
 find_package(nlohmann_json 3.2 REQUIRED)
 include(CTest)
+# OpenSession 带的协议版本与 Rust 那边是同一个数（Server 不等就断开），从 qingjian-platform 的源码里读，不在 C++ 里写死：
+# Windows 那边加消息升版本时插件自动跟上（写死的 6 在 v7 之后让插件连不上 Server、按键全部放行）
+set(QINGJIAN_PROTOCOL_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../../../crates/qingjian-platform/src/protocol/mod.rs")
+file(STRINGS "${QINGJIAN_PROTOCOL_SOURCE}" QINGJIAN_PROTOCOL_LINE REGEX "^pub const PROTOCOL_VERSION: u32 = [0-9]+;")
+# 读到的行尾分号被 CMake 转义成 \;，只取「= 数字」
+if(NOT QINGJIAN_PROTOCOL_LINE MATCHES "= ([0-9]+)")
+    message(FATAL_ERROR "没从 ${QINGJIAN_PROTOCOL_SOURCE} 读到 PROTOCOL_VERSION")
+endif()
+set(QINGJIAN_PROTOCOL_VERSION "${CMAKE_MATCH_1}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${QINGJIAN_PROTOCOL_SOURCE}")
+add_compile_definitions(QINGJIAN_PROTOCOL_VERSION=${QINGJIAN_PROTOCOL_VERSION})
 set(QINGJIAN_SOURCES src/qingjian.cpp src/ipc/connection.cpp src/key/mapping.cpp)
 add_library(qingjian MODULE src/factory.cpp ${QINGJIAN_SOURCES})
 target_include_directories(qingjian PRIVATE src)
