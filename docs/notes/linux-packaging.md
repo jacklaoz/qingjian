@@ -37,7 +37,8 @@ IBus 前端没有额外依赖，跟 Server 同包；它的组件 XML 在系统�
 
 ## 装法
 
-装完**都要重新登录一次**：Server 的自启与 IBus 的组件目录都是在会话开始时读的。
+deb / rpm 装完 Server 就在已登录用户的会话里起来了（装包脚本对正在跑的用户 systemd 实例直接 restart）；
+IBus 要重新登录一次（或 `ibus restart`）才看得到新引擎。flatpak 版的登记脚本也是当场起 Server。
 
 ### Debian / Ubuntu（deb）
 
@@ -88,6 +89,10 @@ flatpak 的宿主机登记脚本（写组件、environment.d、systemd 服务）
 
 ## 几处限制与坑
 
+- **`systemctl --global enable` 不够**：它只对之后起来的用户 systemd 实例生效，而注销再登录得快时实例根本不重起。
+  2026-09-23 在 Ubuntu 24.04 上踩过：10:51 装包、10:52 重新登录，用户实例是 10:46 起的一直没换，Server 一次都没起，
+  切到青简打字没有候选。所以 postinst / `%post` 对 `loginctl list-users` 里的每个用户 `systemctl --user -M 用户@ restart`，
+  prerm / `%preun` 同样 stop。
 - **与用户级安装冲突**：`install.sh` 装在 `~/.local` 的那一份也叫 `qingjian-server.service`，组件名也相同。
   用户目录的单元优先于系统目录的，两份同时在时生效的是用户目录那份；装发行包之前先跑 `apps/linux/scripts/uninstall.sh`。
   flatpak 的登记脚本碰到这种情况会直接报错退出。

@@ -22,7 +22,7 @@ Recommends:     (ibus or qingjian-fcitx5)
 
 %description
 跨平台拼音输入法。本包是引擎（Server，systemd 用户服务）、IBus 前端与随包词库；
-用 fcitx5 的再装 qingjian-fcitx5。装完重新登录一次。
+用 fcitx5 的再装 qingjian-fcitx5。Server 装完就起；IBus 要重新登录一次（或 ibus restart）才看得到青简。
 
 %package fcitx5
 Summary:        青简输入法的 fcitx5 插件
@@ -35,13 +35,21 @@ Requires:       fcitx5
 %install
 cp -a %{qj_root}/. %{buildroot}/
 
-# Server 挂到每个用户的会话里自启（--global 只影响之后登录的会话，所以装完要重新登录）
+# Server 挂到每个用户的会话里自启。--global 只对之后起来的用户 systemd 实例生效，而注销再登录得快时
+# 实例根本不重起；所以已经登录的用户直接在他们正在跑的实例里重载并（重）启动（与 deb 的 postinst 一致）
 %post
 systemctl --global enable qingjian-server.service >/dev/null 2>&1 || :
+for user in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+  systemctl --user -M "$user@" daemon-reload >/dev/null 2>&1 || :
+  systemctl --user -M "$user@" restart qingjian-server.service >/dev/null 2>&1 || :
+done
 
 %preun
 if [ $1 -eq 0 ]; then
   systemctl --global disable qingjian-server.service >/dev/null 2>&1 || :
+  for user in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+    systemctl --user -M "$user@" stop qingjian-server.service >/dev/null 2>&1 || :
+  done
 fi
 
 %files
