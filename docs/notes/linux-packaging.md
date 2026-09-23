@@ -30,7 +30,8 @@ deb 与 rpm 都拆成两个包：
 
 - **`qingjian`**：`/usr/bin/qingjian-linux-server`、`/usr/share/qingjian/resources/`（词库、释义表、本地整句模型；
   Server 按「可执行文件上一层的 `share/qingjian/resources`」找到它）、`/usr/lib/systemd/user/qingjian-server.service`
-  （`packaging/qingjian-server.service`）。装的时候 `systemctl --global enable`，每个用户登录后自动起 Server；卸载时 disable。
+  （`packaging/qingjian-server.service`）。装的时候 `systemctl --global enable`，每个用户登录后自动起 Server，
+  并对已经登录的用户当场起起来（见文末）；卸载时 disable 并停掉。
 - **`qingjian-fcitx5`**：插件与两份描述文件，放 fcitx5 自己的插件目录（Debian 是 `/usr/lib/<多架构>/fcitx5/`，Fedora 是 `/usr/lib64/fcitx5/`），
   描述文件里 `Library=qingjian` 按名字找。
 
@@ -40,7 +41,7 @@ deb 与 rpm 都拆成两个包：
 
 ## 装法
 
-装完**重新登录一次**（Server 的自启是在会话开始时起的），重启 fcitx5，在 `fcitx5-configtool` 里取消「仅显示当前语言」、添加「青简」。
+Server 装完就在已登录用户的会话里起来了，不用重新登录。重启 fcitx5，在 `fcitx5-configtool` 里取消「仅显示当前语言」、添加「青简」。
 
 ```bash
 # Debian 13 / Ubuntu 25.04 及以后
@@ -50,6 +51,13 @@ sudo dnf install ./qingjian-<版本>.x86_64.rpm ./qingjian-fcitx5-<版本>.x86_6
 # openSUSE Tumbleweed（包没签名）
 sudo zypper install --allow-unsigned-rpm ./qingjian-<版本>.x86_64.rpm ./qingjian-fcitx5-<版本>.x86_64.rpm
 ```
+
+`apt install ./…` / `dnf install ./…` 会把 fcitx5 与它的 GTK / Qt 输入法模块、配置工具一起装上（2026-09-23 在干净的
+Debian 13、Ubuntu 26.04、Fedora 42 容器里看过；`dpkg -i` 不补依赖，要再跑一次 `sudo apt -f install`）。
+**不会替你把输入法框架从 IBus 切到 fcitx5**，GNOME 默认是 IBus：
+
+- Debian / Ubuntu：`im-config -n fcitx5`，重新登录；
+- Fedora：装 `fcitx5-autostart`（`qingjian-fcitx5` 已经 Recommends 它，dnf 缺省会一起装），重新登录。
 
 用 `install.sh` 装过的先跑 `apps/linux/scripts/uninstall.sh`：它把插件描述文件装在 `~/.local/share/fcitx5/`，同名时用户目录那份优先，装的包就不生效。
 
@@ -67,3 +75,10 @@ apps/linux/packaging/smoke/run.sh
 2026-09-23 五个都过：候选「你好 👋 你好好 你好像…」，模型从 `/usr/share/qingjian/resources/data/model/model.qjm` 加载并预热。
 
 容器里没有图形会话，**真会话里在 fcitx5 下切到青简打字没验**：要在机器上装了之后手测。
+
+## 坑：`systemctl --global enable` 不够
+
+它只对之后起来的用户 systemd 实例生效，而注销再登录得快时实例根本不重起。2026-09-23 在 Ubuntu 24.04 上踩过：
+10:51 装包、10:52 重新登录，用户实例是 10:46 起的一直没换，Server 一次都没起。所以 postinst / `%post` 对
+`loginctl list-users` 里的每个用户 `systemctl --user -M 用户@ daemon-reload` 与 `restart`（升级时也换上新的 Server），
+prerm / `%preun` 同样 stop。同一台机器上升级验过：装包那一秒 Server 就换成了新版，没有重新登录。

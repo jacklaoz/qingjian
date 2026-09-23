@@ -63,13 +63,19 @@ control "$core" qingjian "$(shlibs "$core/usr/bin/qingjian-linux-server")" \
   $'Recommends: qingjian-fcitx5\n' \
   '青简输入法：Server 与词库' \
   ' 跨平台拼音输入法。本包是引擎（Server，systemd 用户服务）、随包词库与本地整句模型；
- 输入法前端在 qingjian-fcitx5。装完重新登录一次。'
-# Server 挂到每个用户的会话里自启（--global 只影响之后登录的会话，所以装完要重新登录）
+ 输入法前端在 qingjian-fcitx5。Server 装完就起。'
+# Server 挂到每个用户的会话里自启。--global 只对之后起来的用户 systemd 实例生效，而注销再登录得快时
+# 实例根本不重起（Ubuntu 24.04 上踩过：装完重登，Server 一次都没起）；所以已经登录的用户直接在他们
+# 正在跑的实例里重载并（重）启动：装完不用重登就能打字，升级也换上新的 Server
 cat > "$core/DEBIAN/postinst" <<'SCRIPT'
 #!/bin/sh
 set -e
 if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
   systemctl --global enable qingjian-server.service >/dev/null 2>&1 || true
+  for user in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+    systemctl --user -M "$user@" daemon-reload >/dev/null 2>&1 || true
+    systemctl --user -M "$user@" restart qingjian-server.service >/dev/null 2>&1 || true
+  done
 fi
 SCRIPT
 cat > "$core/DEBIAN/prerm" <<'SCRIPT'
@@ -77,6 +83,9 @@ cat > "$core/DEBIAN/prerm" <<'SCRIPT'
 set -e
 if [ "$1" = remove ] && command -v systemctl >/dev/null 2>&1; then
   systemctl --global disable qingjian-server.service >/dev/null 2>&1 || true
+  for user in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $2}'); do
+    systemctl --user -M "$user@" stop qingjian-server.service >/dev/null 2>&1 || true
+  done
 fi
 SCRIPT
 chmod 755 "$core/DEBIAN/postinst" "$core/DEBIAN/prerm"
