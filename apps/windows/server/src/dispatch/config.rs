@@ -1,3 +1,4 @@
+use qingjian_core::TraditionalVariant;
 use qingjian_platform::protocol::KeyModifiers;
 use qingjian_platform::{
     Appearance, AppsConfig, CandidateRenderer, Config, FontSize, HighlightKeys, KeyCombo,
@@ -182,7 +183,7 @@ impl From<&Config> for RouterConfig {
             status_pos: config.status_bar.x.zip(config.status_bar.y),
             scheme: config.general.scheme(),
             wubi: config.general.wubi(),
-            traditional: config.general.traditional,
+            traditional: config.general.traditional != TraditionalVariant::Off,
             aux_code_key: config.general.aux_code_key(),
             aux_code_show: config.general.aux_code_show,
         }

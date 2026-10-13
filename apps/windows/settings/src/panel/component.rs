@@ -63,7 +63,9 @@ impl Component for Settings {
             }
             Message::ShuangpinRawPreedit(on) => self.save("general", "shuangpin_raw_preedit", on),
             Message::Wubi(on) => self.save("general", "wubi", if on { "wubi86" } else { "" }),
-            Message::Traditional(on) => self.save("general", "traditional", on),
+            Message::Traditional(Some(i)) if i < general::TRADITIONAL.len() => {
+                self.save("general", "traditional", general::TRADITIONAL[i].1);
+            }
             Message::Emoji(Some(count)) if count <= usize::from(EmojiCount::MAX) => {
                 self.save("general", "emoji", count as i64);
             }
