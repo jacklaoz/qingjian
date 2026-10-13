@@ -6,6 +6,7 @@ mod state;
 #[cfg(test)]
 mod tests;
 
+use qingjian_render::ThemeLibrary;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -18,6 +19,9 @@ pub use self::state::DataDirs;
 
 /// 看配置文件 mtime 的最短间隔；工人循环空闲时按它等，重排的短节拍来得更勤时按这个节流。
 pub(super) const CONFIG_POLL_INTERVAL: Duration = Duration::from_secs(1);
+
+/// 检查更新的结果文件名，在用户数据目录下（见 `qingjian-update::UpdateState`）。
+const UPDATE_STATE_FILE: &str = "update.json";
 use super::{Router, RouterConfig};
 use crate::assembly;
 
@@ -88,6 +92,16 @@ fn swap_translator(
 }
 
 impl Router {
+    /// 检查更新查到了要提示的新版本（开关关着、本地开发包都不算）。
+    pub(super) fn update_available(&self) -> bool {
+        self.reload.as_ref().is_some_and(|reload| {
+            reload
+                .updates
+                .as_ref()
+                .is_some_and(|updates| updates.available(&reload.update).is_some())
+        })
+    }
+
     /// `config.toml` 路径；没开热加载（测试）时为 `None`。
     pub(super) fn config_path(&self) -> Option<&Path> {
         self.reload
@@ -108,6 +122,9 @@ impl Router {
         let last_mtime = mtime(&config_path);
         let code_files = dirs.code_snapshot();
         let dictionary_files = dirs.dict_snapshot();
+        let updates = dirs.user_root.as_deref().map(|dir| {
+            qingjian_update::Checker::new(dir.join(UPDATE_STATE_FILE), env!("CARGO_PKG_VERSION"))
+        });
         self.reload = Some(ConfigReload {
             config_path,
             last_check: Instant::now(),
@@ -120,6 +137,8 @@ impl Router {
             applied_aux_code: config.aux_code.clone(),
             dictionary_files,
             applied_language: assembly::learning_language(config),
+            update: config.update.clone(),
+            updates,
         });
     }
 
@@ -133,6 +152,9 @@ impl Router {
             return;
         }
         reload.last_check = Instant::now();
+        if let Some(updates) = &reload.updates {
+            updates.poll(&reload.update);
+        }
         // 用户 `dicts/` 目录文件增删或更新：与配置改动无关，下一拍就生效
         let files = reload.dirs.dict_snapshot();
         if files != reload.dictionary_files {
@@ -141,6 +163,17 @@ impl Router {
                 .set_extra_dictionaries(reload.load_dictionaries());
             reload.dictionary_files = files;
         }
+        // 用户主题文件改了：戳变了设置就不等，UI 线程重读主题当场换上（边改主题边看效果）
+        if let Some(dir) = qingjian_platform::dirs::themes_dir() {
+            let stamp = ThemeLibrary::stamp(&dir);
+            if stamp != self.config.themes_stamp {
+                self.config.themes_stamp = stamp;
+                self.candidates.configure(self.config.render_settings());
+            }
+        }
+        let Some(reload) = &mut self.reload else {
+            return;
+        };
         let config_changed = {
             let current = mtime(&reload.config_path);
             let changed = current != reload.last_mtime;
@@ -173,10 +206,16 @@ impl Router {
     /// 应用新配置。学习语言变了换释义表（词汇等级表启动时已全装，不用换）。
     fn apply_config(&mut self, config: &Config) {
         self.engine.set_fuzzy(config.fuzzy);
+        // Windows 端此前漏装 custom_phrases（macOS 端 apply_config 有）；失败只记日志，保持原短语
+        if let Err(error) = self
+            .engine
+            .set_custom_phrases(config.custom_phrases.clone())
+        {
+            tracing::warn!(%error, "自定义短语配置未应用，保持原短语");
+        }
         // 拼音侧与形码侧一起装配（双拼 / 注音 / 混输都在里面）
         self.reload_code_table(config.general.scheme(), config.general.wubi());
         self.engine.set_traditional(config.general.traditional);
-        self.engine.set_extras(config.general.extras);
         self.engine.set_learning(config.general.learning);
         self.engine.set_mode_keys(config.shortcut.mode);
         self.engine
@@ -187,11 +226,23 @@ impl Router {
         self.engine.set_aux_show(config.general.aux_code_show);
         self.engine.set_chinese_first(config.general.chinese_first);
         self.engine
+            .set_emoji_limit(usize::from(config.general.emoji.get()));
+        self.engine
+            .set_kaomoji_limit(usize::from(config.general.kaomoji.get()));
+        self.engine
+            .set_symbol_limit(usize::from(config.general.symbols.get()));
+        self.engine
+            .set_english_in_chinese(config.general.english_in_chinese);
+        self.engine
             .set_shift_letter_compose(config.general.shift_letter.compose());
         self.engine
             .set_shuangpin_raw_preedit(config.general.shuangpin_raw_preedit);
         let previous = self.config.render_settings();
-        self.config = RouterConfig::from(config);
+        let next = RouterConfig::from(config);
+        self.reload_mode(&next);
+        let themes_stamp = self.config.themes_stamp;
+        self.config = next;
+        self.config.themes_stamp = themes_stamp;
         let settings = self.config.render_settings();
         if settings != previous {
             self.candidates.configure(settings);
@@ -202,6 +253,7 @@ impl Router {
         let Some(reload) = &mut self.reload else {
             return;
         };
+        reload.update = config.update.clone();
         if config.predict != reload.applied_predict {
             attach_cloud(&mut self.engine, &config.predict);
             reload.applied_predict = config.predict.clone();

@@ -13,22 +13,23 @@ pub mod engine;
 pub mod english;
 pub mod fuzzy;
 pub mod history;
+pub mod panel;
 pub mod parser;
 pub mod punctuation;
 pub mod ranking;
 pub mod sentence;
 pub mod shortcut;
 pub mod shuangpin;
+pub mod spacing;
 pub mod storage;
-pub mod symbol;
 pub mod traditional;
 pub mod zhuyin;
 
 pub use custom_phrase::CustomPhrase;
 
 pub use candidate::{
-    Candidate, CandidateKind, CandidateLayout, CandidateList, Cell, ExtraCandidates, GRID_ROWS,
-    Grid, Language, MAX_CELL_EMS, PartOfSpeech, Sense, Translation,
+    Candidate, CandidateKind, CandidateLayout, CandidateList, Cell, GRID_ROWS, Grid, Language,
+    MAX_CELL_EMS, PartOfSpeech, Sense, Translation,
 };
 pub use composition::Composition;
 pub use correction::Correction;
@@ -45,9 +46,9 @@ pub use engine::{
 };
 pub use fuzzy::FuzzyRules;
 pub use history::InputHistory;
+pub use panel::{PANEL_COLUMNS, PanelGroup, PanelSection, SymbolPanel};
 pub use parser::{ParseError, Segmentation};
 pub use punctuation::Punctuation;
 pub use qingjian_dictionary as dictionary;
 pub use shuangpin::Scheme as ShuangpinScheme;
-pub use symbol::{SymbolEntry, SymbolTable};
 pub use traditional::{Traditional, TraditionalVariant};

@@ -81,7 +81,12 @@ stage_core() {
   mkdir -p "$dest/usr/lib/systemd/user"
   sed 's|@EXEC@|/usr/bin/qingjian-linux-server|' "$root/apps/linux/scripts/qingjian-server.service.in" \
     > "$dest/usr/lib/systemd/user/qingjian-server.service"
-  install -Dm644 "$root/assets/icon/logo.png" "$dest/usr/share/icons/hicolor/128x128/apps/qingjian.png"
+  # 托盘按名义尺寸挑图，目录名与像素必须一致（#547），与 files.py 装的同一套
+  local size
+  for size in 16 22 24 32 48 64 128 256; do
+    install -Dm644 "$root/assets/icon/linux/hicolor/${size}x${size}/apps/qingjian.png" \
+      "$dest/usr/share/icons/hicolor/${size}x${size}/apps/qingjian.png"
+  done
 }
 
 build_deb() {

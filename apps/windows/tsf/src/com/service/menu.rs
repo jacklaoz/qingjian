@@ -18,8 +18,8 @@ impl TextService_Impl {
             log("右键菜单：找不到本线程的窗口，不弹");
             return;
         };
-        // 悬浮条显示的是最后上报模式的那个应用；先报一次，让它与这份菜单说的是同一个应用
-        self.refresh_mode_indicator();
+        // 先跟上全局模式，菜单上的勾与悬浮状态条一致（悬浮条上刚点过、还没到轮询那一拍时）
+        self.sync_mode_from_server();
         let english = self.mode_state.english();
         let indicator = self.indicator_state.get();
         let state = MenuState {
@@ -31,10 +31,16 @@ impl TextService_Impl {
                 indicator.full_width_punctuation
             },
             status_bar: indicator.status_bar,
+            update_available: indicator.update_available,
         };
         match menu::track(owner, point, &state) {
             Some(MenuChoice::Mode { english }) if english != self.mode_state.english() => {
                 self.set_english_mode(english);
+            }
+            Some(MenuChoice::Server(IndicatorCommand::OpenSymbolPanel)) => {
+                self.send_indicator(IndicatorCommand::OpenSymbolPanel);
+                // 当场取一拍状态：面板开了就接着把键交给 Server，不等轮询
+                self.sync_mode_from_server();
             }
             Some(MenuChoice::Server(command)) => self.send_indicator(command),
             _ => {}
@@ -42,8 +48,11 @@ impl TextService_Impl {
     }
 
     fn send_indicator(&self, command: IndicatorCommand) {
-        if command == IndicatorCommand::OpenSettings {
-            // 设置程序由 Server 起；前台权在点菜单的这边，让出去它的窗口才能到前面
+        if matches!(
+            command,
+            IndicatorCommand::OpenSettings | IndicatorCommand::OpenDownload
+        ) {
+            // 设置程序 / 浏览器由 Server 起；前台权在点菜单的这边，让出去它的窗口才能到前面
             let _ = unsafe { AllowSetForegroundWindow(ASFW_ANY) };
         }
         match self.engine.borrow_mut().as_mut() {

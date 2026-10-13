@@ -23,9 +23,6 @@ pub struct AssemblySpec {
     /// emoji 表（多张合成一张）。
     pub emoji: Vec<PathBuf>,
 
-    /// 符号表（按输入码查）。
-    pub symbols: Option<PathBuf>,
-
     /// 语言模型；没有就退化成一元词频整句。
     pub language_model: Option<LanguageModelFiles>,
 
@@ -56,7 +53,6 @@ impl AssemblySpec {
             english_glossary: None,
             english: None,
             emoji: Vec::new(),
-            symbols: None,
             language_model: None,
             bundled_dicts_dir: None,
             dictionaries: DictionariesConfig::default(),

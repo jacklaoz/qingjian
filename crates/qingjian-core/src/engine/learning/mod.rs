@@ -170,7 +170,10 @@ impl Engine {
             CandidateKind::Sentence
             | CandidateKind::Shortcut
             | CandidateKind::Custom(_)
-            | CandidateKind::Emoji => Forgotten::default(),
+            | CandidateKind::Emoji
+            | CandidateKind::Kaomoji
+            | CandidateKind::Symbol
+            | CandidateKind::Generated => Forgotten::default(),
         };
         if !forgotten.is_nothing() {
             self.forget_span_cache();

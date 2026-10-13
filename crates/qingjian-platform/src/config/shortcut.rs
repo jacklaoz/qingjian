@@ -1,9 +1,11 @@
 use qingjian_core::ModeKeys;
 use serde::{Deserialize, Serialize};
 
+use super::PageKeys;
+use super::highlight_keys::HighlightKeys;
 use super::key_combo::KeyCombo;
 use super::modifiers::Modifiers;
-use super::switch_key::SwitchKey;
+use super::switch_key::SwitchKeys;
 
 /// 配置文件 `[shortcut]` 分节：前缀模式键（Core 的 [`ModeKeys`]）加壳层的修饰键组合。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -13,8 +15,18 @@ pub struct ShortcutConfig {
     #[serde(flatten)]
     pub mode: ModeKeys,
 
-    /// 中 / 英切换键（单击，Windows 用）：`shift` / `control` / `none`。详见 [`SwitchKey`]。
-    pub switch_mode: SwitchKey,
+    /// 中 / 英切换键（Windows 用），可多选：`["shift", "control", "ctrl+alt+space"]`。详见 [`SwitchKeys`]。
+    pub switch_mode: SwitchKeys,
+
+    /// 候选高亮由 `↑` / `↓` 还是 `←` / `→` 移动（Windows 用）。详见 [`HighlightKeys`]。
+    pub highlight_keys: HighlightKeys,
+
+    /// Windows：切换当前中英模式的全 / 半角标点，空串禁用，例如 `ctrl+.`。
+    #[serde(with = "super::optional_key_combo")]
+    pub toggle_punctuation: Option<KeyCombo>,
+
+    /// Windows：主翻页键以外同时启用的符号键对。
+    pub extra_page_keys: PageKeys,
 
     /// 数字键配这些修饰键：上屏候选的第一个译词。
     pub translation: Modifiers,
@@ -38,7 +50,10 @@ impl Default for ShortcutConfig {
         let (translation, translation_second) = (Modifiers::OPTION, Modifiers::SHIFT_OPTION);
         Self {
             mode: ModeKeys::default(),
-            switch_mode: SwitchKey::default(),
+            switch_mode: SwitchKeys::default(),
+            highlight_keys: HighlightKeys::UpDown,
+            toggle_punctuation: None,
+            extra_page_keys: PageKeys::default(),
             translation,
             translation_second,
             translate_selection: KeyCombo::TRANSLATE_DEFAULT,
@@ -80,12 +95,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn optional_punctuation_and_extra_page_keys_round_trip() {
+        let default: ShortcutConfig = toml::from_str("").unwrap();
+        assert_eq!(default.toggle_punctuation, None);
+        assert_eq!(default.extra_page_keys.step('.'), None);
+        let config: ShortcutConfig =
+            toml::from_str("toggle_punctuation = 'ctrl+.'\nextra_page_keys = ['[]', ',.', '-=']")
+                .unwrap();
+        assert_eq!(config.toggle_punctuation.unwrap().key, '.');
+        for key in ['[', ',', '-'] {
+            assert_eq!(config.extra_page_keys.step(key), Some(-1));
+        }
+        for key in [']', '.', '='] {
+            assert_eq!(config.extra_page_keys.step(key), Some(1));
+        }
+        let round_trip: ShortcutConfig =
+            toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert_eq!(round_trip, config);
+        assert_eq!(
+            toml::from_str::<ShortcutConfig>("toggle_punctuation = ''")
+                .unwrap()
+                .toggle_punctuation,
+            None
+        );
+        assert!(toml::from_str::<ShortcutConfig>("extra_page_keys = ['ab']").is_err());
+        assert!(toml::from_str::<ShortcutConfig>("toggle_punctuation = 'ctrl+unknown'").is_err());
+    }
+
+    #[test]
     fn old_files_without_modifier_keys_still_parse_and_get_defaults() {
         // 缺省值分平台（Windows 用 Ctrl 系、其余用 Option 系），断言跟着平台的 Default 走
         let default = ShortcutConfig::default();
         let parsed: ShortcutConfig = toml::from_str("expression = \"i\"\n").unwrap();
         assert_eq!(parsed.mode.expression, 'i');
-        assert_eq!(parsed.switch_mode, SwitchKey::Shift);
+        assert_eq!(parsed.switch_mode, SwitchKeys::default());
         assert_eq!(
             parsed.translation_keys(),
             (default.translation, default.translation_second)
@@ -126,11 +169,20 @@ mod tests {
 
     #[test]
     fn switch_mode_parses_and_defaults_to_shift() {
-        let parsed: ShortcutConfig = toml::from_str("switch_mode = \"ctrl\"\n").unwrap();
-        assert_eq!(parsed.switch_mode, SwitchKey::Control);
+        let parsed: ShortcutConfig = toml::from_str("switch_mode = [\"ctrl\"]\n").unwrap();
+        assert!(parsed.switch_mode.control && !parsed.switch_mode.shift);
         let off: ShortcutConfig = toml::from_str("switch_mode = \"none\"\n").unwrap();
-        assert_eq!(off.switch_mode, SwitchKey::None);
+        assert_eq!(off.switch_mode, crate::SwitchKeys::NONE);
         let missing: ShortcutConfig = toml::from_str("").unwrap();
-        assert_eq!(missing.switch_mode, SwitchKey::Shift);
+        assert_eq!(missing.switch_mode, SwitchKeys::default());
+    }
+
+    #[test]
+    fn highlight_keys_parses_and_defaults_to_updown() {
+        let parsed: ShortcutConfig = toml::from_str("highlight_keys = \"leftright\"\n").unwrap();
+        assert_eq!(parsed.highlight_keys, HighlightKeys::LeftRight);
+        // 老配置没有这一项，行为保持以前：↑ / ↓ 移高亮
+        let missing: ShortcutConfig = toml::from_str("").unwrap();
+        assert_eq!(missing.highlight_keys, HighlightKeys::UpDown);
     }
 }

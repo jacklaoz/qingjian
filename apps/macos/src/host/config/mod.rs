@@ -6,6 +6,8 @@ mod watch;
 pub(super) use text_replacements::TextReplacement;
 pub(super) use watch::ConfigWatch;
 
+use qingjian_render::TextSizes;
+
 use super::init::load_glossary;
 use super::*;
 
@@ -21,7 +23,15 @@ impl Host {
         self.apply_custom_phrases(&config);
         self.engine.set_mode_keys(config.shortcut.mode);
         self.engine.set_chinese_first(config.general.chinese_first);
-        self.engine.set_extras(config.general.extras);
+        self.engine
+            .set_emoji_limit(usize::from(config.general.emoji.get()));
+        self.engine
+            .set_kaomoji_limit(usize::from(config.general.kaomoji.get()));
+        self.engine
+            .set_symbol_limit(usize::from(config.general.symbols.get()));
+        self.engine
+            .set_english_in_chinese(config.general.english_in_chinese);
+        self.engine.set_auto_space(config.general.auto_space);
         self.engine
             .set_shift_letter_compose(config.general.shift_letter.compose());
         self.apply_scheme(config.general.scheme(), config.general.wubi());
@@ -35,10 +45,11 @@ impl Host {
         self.page_size = config.general.page_size();
         self.cloud_slots = config.predict.slots;
         self.page_keys = config.general.page_keys();
+        self.punct_commits = config.general.punct_commits;
         self.preedit_mode = config.general.preedit;
         self.english_candidates = config.general.english_candidates;
         self.apps = config.apps.clone();
-        self.window.set_theme(config.general.theme);
+        self.window.set_appearance(config.general.appearance());
         self.window.set_layout(config.general.layout);
         if self.layout != config.general.layout
             || self.horizontal_grid != config.general.horizontal_grid
@@ -48,6 +59,9 @@ impl Host {
             self.session.collapse();
         }
         self.window.set_font(&config.general.font);
+        self.themes.refresh();
+        self.window
+            .set_render_theme(self.render_theme(&config.general));
         self.window.set_renderer(config.general.renderer);
         self.apply_learning_language(&config.general);
         if self.input_log_enabled != Some(config.general.input_log) {
@@ -107,7 +121,9 @@ impl Host {
             key_present,
             self.settings.error(),
             &self.dictionary_list,
+            &self.update_status,
         );
+        self.sync_update();
     }
 
     /// 配置里的自定义短语，`[general] system_text_replacements` 开着时再并上系统的文本替换，一起推给 Engine。
@@ -181,9 +197,27 @@ impl Host {
 
     /// 激活期间的定时器每秒调一次：看配置文件，再看学习数据要不要落盘。
     /// 学习数据原本只在停用输入法时保存，进程被 launchd 杀掉就丢一整段；现在最多丢 [`LEARNING_FLUSH_INTERVAL`] 这么久。
+    /// 配置里选的主题，盖上设置里的字号与动画开关。
+    fn render_theme(&self, general: &GeneralConfig) -> qingjian_render::Theme {
+        let sizes = TextSizes {
+            candidate: general.candidate_font_size.get(),
+            annotation: general.annotation_font_size.get(),
+        };
+        self.themes
+            .resolve(general.theme_id(), false)
+            .with_text_sizes(sizes)
+            .with_animations(general.animations)
+    }
+
     /// 没有新数据时 flush 是空操作（各表按 dirty 位判断），不会每分钟碰一次磁盘。
     pub fn tick(&mut self) {
         self.reload_config_if_changed();
+        // 用户主题目录里的 theme.json 改了就重读，当前主题当场换上（边改主题边看效果）
+        if self.themes.refresh() {
+            let general = self.settings.config().general.clone();
+            tracing::info!(id = general.theme_id(), "主题目录有变化，已重读");
+            self.window.set_render_theme(self.render_theme(&general));
+        }
         let learned = self.engine.poll_glosses();
         if learned > 0 {
             tracing::info!(learned, "释义兜底写入个人释义表");
@@ -191,6 +225,29 @@ impl Host {
         if self.last_flush.elapsed() >= LEARNING_FLUSH_INTERVAL {
             self.engine.flush_learning();
             self.last_flush = std::time::Instant::now();
+        }
+        if let Some(updates) = &self.updates {
+            updates.poll(&self.settings.config().update);
+        }
+        self.sync_update();
+    }
+
+    /// 检查更新的状态变了就刷菜单里的「有新版本」与「关于」页；没变什么都不做。
+    pub fn sync_update(&mut self) {
+        let Some(updates) = &self.updates else {
+            return;
+        };
+        let config = self.settings.config();
+        let status = UpdateStatus {
+            available: updates.available(&config.update).map(|found| found.version),
+            checking: updates.checking(),
+            checked: updates.checked_at() > 0,
+            dev_build: updates.is_dev_build(),
+        };
+        if status != self.update_status {
+            self.menu.sync_update(status.available.as_deref());
+            self.preferences.sync_update(config, &status);
+            self.update_status = status;
         }
     }
 

@@ -84,7 +84,7 @@ pub fn pack(
             let language: Language = language.parse().map_err(|_| ConvertError::Format {
                 path: PathBuf::from(language),
                 line: 0,
-                reason: "language must be en / ja / zh / es".to_owned(),
+                reason: "language must be en / ja / zh / es / de".to_owned(),
             })?;
             let input = inputs.first().cloned().unwrap_or_else(|| {
                 PathBuf::from("assets/glossary").join(format!("glossary-{}.tsv", language.code()))
@@ -98,8 +98,11 @@ pub fn pack(
             let input = inputs
                 .first()
                 .cloned()
-                .unwrap_or_else(|| PathBuf::from("data/model"));
-            let out = out_dir.join("model.qjm");
+                .unwrap_or_else(|| PathBuf::from("data/models/hanzhang-zhiwei"));
+            let out = paths
+                .output
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| out_dir.join("model.qjm"));
             let parameters = qingjian_neural::qjm::pack(&input, &out, &metadata)?;
             report(
                 &out,

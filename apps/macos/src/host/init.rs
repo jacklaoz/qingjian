@@ -94,10 +94,6 @@ pub fn init(mtm: MainThreadMarker, info: &BundleInfo) -> Result<(), HostError> {
         tracing::info!(words = table.len(), "emoji 表已加载");
         engine = engine.with_emoji(table);
     }
-    if let Some(table) = load_symbol_table("symbol-zh.tsv") {
-        tracing::info!(codes = table.len(), "符号表已加载");
-        engine = engine.with_symbols(table);
-    }
     // 语言模型可选：没有就退化成一元词频整句；打包过的 lm.qj 优先
     let model = if let Ok(packed) = paths::resource("lm.qj") {
         Some(BigramModel::from_path(&packed)?)
@@ -119,6 +115,8 @@ pub fn init(mtm: MainThreadMarker, info: &BundleInfo) -> Result<(), HostError> {
         engine = engine.with_language_model(Box::new(model));
     }
     let window = CandidateWindow::new(mtm);
+    window.set_click_handler(Box::new(crate::imk::click));
+    window.set_panel_mouse_handler(Box::new(crate::imk::panel_mouse));
     let indicator = ModeIndicator::new(mtm);
     let menu = InputMenu::new(mtm, version);
     indicator.set_menu(&menu.ns_menu());
@@ -134,6 +132,7 @@ pub fn init(mtm: MainThreadMarker, info: &BundleInfo) -> Result<(), HostError> {
             preferences,
             settings,
             watch,
+            themes: qingjian_render::ThemeLibrary::load(paths::themes_dir().as_deref()),
             last_flush: std::time::Instant::now(),
             applied_predict: PredictConfig::default(),
             applied_dictionaries: DictionariesConfig::default(),
@@ -145,6 +144,7 @@ pub fn init(mtm: MainThreadMarker, info: &BundleInfo) -> Result<(), HostError> {
             page_size: 9,
             cloud_slots: 2,
             page_keys: qingjian_platform::DEFAULT_PAGE_KEYS,
+            punct_commits: false,
             translation_keys: ShortcutConfig::default().translation_keys(),
             delete_keys: ShortcutConfig::default().delete_keys(),
             status: None,
@@ -164,6 +164,9 @@ pub fn init(mtm: MainThreadMarker, info: &BundleInfo) -> Result<(), HostError> {
             rescore: RescoreMonitor::new(mtm),
             model_loader: None,
             applied_model: None,
+            updates: paths::user_data_dir()
+                .map(|dir| qingjian_update::Checker::new(dir.join(UPDATE_STATE_FILE), version)),
+            update_status: UpdateStatus::default(),
             session: Session::default(),
             sentence: None,
             anchor: NSRect::ZERO,
@@ -259,18 +262,6 @@ pub(super) fn load_emoji_tables(names: &[&str]) -> Option<EmojiTable> {
         }
     }
     merged
-}
-
-/// 包里的符号表；没有或坏了只记日志，不出符号候选。
-pub(super) fn load_symbol_table(name: &str) -> Option<SymbolTable> {
-    let path = paths::resource(name).ok()?;
-    match SymbolTable::from_path(&path) {
-        Ok(table) => Some(table),
-        Err(error) => {
-            tracing::warn!(%error, name, "符号表加载失败，跳过");
-            None
-        }
-    }
 }
 
 pub(super) fn glossary_path(language: Language) -> Result<PathBuf, HostError> {

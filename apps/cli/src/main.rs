@@ -4,6 +4,7 @@
 //! 不依赖任何平台 API，是 Core 的第一个「壳」。
 
 mod args;
+mod cold;
 mod display;
 mod error;
 mod eval;
@@ -17,7 +18,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use clap::Parser;
-use qingjian_core::{EmojiTable, Engine, FuzzyRules, Language, SymbolTable};
+use qingjian_core::{EmojiTable, Engine, FuzzyRules, Language};
 use qingjian_dictionary::{AuxCodeLookup, AuxCodeTable, CodeTable, Dictionary, WordList};
 use qingjian_learning::FrequencyLearner;
 use qingjian_lm::BigramModel;
@@ -45,7 +46,17 @@ fn run() -> Result<(), CliError> {
     tracing::info!(total_ms = started.elapsed().as_millis(), "Engine 就绪");
     engine.set_english_mode(args.english_mode);
     engine.set_chinese_first(args.chinese_first);
+    engine.set_emoji_limit(usize::from(args.emoji_limit));
     tuning::apply(&mut engine, &args.tune)?;
+    if let Some(input) = &args.eval_cold {
+        cold::run(
+            &mut engine,
+            input,
+            args.cold_output.as_deref().expect("required by clap"),
+            args.cold_model.as_deref(),
+        )?;
+        return Ok(());
+    }
     // 查码：只看码表，不查词、不进交互
     if !args.aux_query.is_empty() {
         for word in &args.aux_query {
@@ -70,12 +81,23 @@ fn run() -> Result<(), CliError> {
         print!("{report}");
         return Ok(());
     }
+    if let Some(model) = &args.eval_generate {
+        let report = eval::generate::run(
+            &engine,
+            &args.eval_text,
+            model,
+            args.eval_details.as_deref(),
+        )?;
+        print!("{report}");
+        return Ok(());
+    }
     if !args.eval_text.is_empty() {
         let report = eval::run(
             &mut engine,
             &args.eval_text,
             args.eval_save.as_deref(),
             args.misses,
+            args.eval_details.as_deref(),
         )?;
         print!("{report}");
         return Ok(());
@@ -187,13 +209,6 @@ fn build_engine(args: &Args) -> Result<Engine, CliError> {
         );
         engine = engine.with_emoji(table);
     }
-    // 符号表随仓库提供：按输入码查（`duigou` → ✔），没有就不出符号候选
-    let symbol_path = std::path::PathBuf::from("assets/symbol/symbol-zh.tsv");
-    if symbol_path.is_file() {
-        let table = SymbolTable::from_path(&symbol_path)?;
-        tracing::info!(codes = table.len(), "符号表已加载");
-        engine = engine.with_symbols(table);
-    }
     // 语言模型可选：没有就退化成一元词频整句；打包过的 lm.qj 优先
     let packed = std::path::PathBuf::from("data/generated/lm.qj");
     let unigram = std::path::PathBuf::from("data/generated/lm-unigram.tsv");
@@ -216,32 +231,61 @@ fn build_engine(args: &Args) -> Result<Engine, CliError> {
     if let Some(dir) = &args.neural {
         let started = Instant::now();
         let scorer = qingjian_neural::CharScorer::load(dir)?;
+        // 与产品端一致：字表里有 <sep> 的是 P2C 模型，按按键打分；没有的是字级模型，按前文打分
+        let p2c = scorer.vocab().sep().is_some();
+        let scorer: Box<dyn qingjian_core::sentence::SentenceScorer> = if p2c {
+            Box::new(qingjian_neural::P2cScorer(scorer))
+        } else {
+            Box::new(scorer)
+        };
         tracing::info!(
             load_ms = started.elapsed().as_millis(),
             weight = args.neural_weight.unwrap_or(qingjian_core::NEURAL_WEIGHT),
+            kind = if p2c { "P2C" } else { "字级" },
             "神经重打分已启用"
         );
         engine = if args.neural_async {
             engine.with_async_sentence_scorer(
-                Box::new(scorer),
+                scorer,
                 args.neural_weight,
                 args.neural_margin,
                 args.neural_context,
             )
         } else {
             engine.with_sentence_scorer(
-                Box::new(scorer),
+                scorer,
                 args.neural_weight,
                 args.neural_margin,
                 args.neural_context,
             )
         };
     }
+    if let Some(path) = &args.eval_p2c {
+        let scorer = qingjian_neural::CharScorer::load(path)?;
+        if scorer.vocab().sep().is_none() {
+            return Err(qingjian_neural::NeuralError::Corrupt(
+                "Hanzhang Tongbian model requires a <sep> token in its vocabulary",
+            )
+            .into());
+        }
+        engine = engine.with_sentence_scorer(
+            Box::new(eval::p2c::P2cScorer(scorer)),
+            args.neural_weight,
+            args.neural_margin,
+            None,
+        );
+    }
     let config_path = args
         .config
         .clone()
         .unwrap_or_else(args::default_config_file);
-    let mut config = Config::load(&config_path)?;
+    let mut config = if args.eval_cold.is_some() {
+        let mut isolated = Config::default();
+        isolated.predict.enabled = false;
+        isolated
+    } else {
+        Config::load(&config_path)?
+    };
     if args.predict {
         config.predict.enabled = true;
     }
@@ -260,7 +304,6 @@ fn build_engine(args: &Args) -> Result<Engine, CliError> {
         tracing::info!(rules = ?config.fuzzy, "模糊音已启用");
     }
     engine.set_traditional(config.general.traditional);
-    engine.set_extras(config.general.extras);
     engine.set_fuzzy(config.fuzzy);
     engine.set_mode_keys(config.shortcut.mode);
     // `--shuangpin` 现在写的是 [general] scheme（同一个维度的旧键已经并进去），off 就是全拼

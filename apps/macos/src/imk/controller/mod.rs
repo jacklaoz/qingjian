@@ -17,11 +17,15 @@ use crate::candidates::Preedit;
 use crate::host;
 use crate::menubar;
 
+mod click;
 mod command;
 mod commit;
 mod display;
+mod panel;
 mod text;
 mod translate;
+
+pub use click::{click, panel_mouse};
 
 define_class!(
     // SAFETY:
@@ -89,6 +93,7 @@ define_class!(
         #[unsafe(method(activateServer:))]
         fn activate_server(&self, sender: Option<&AnyObject>) {
             tracing::info!("activateServer");
+            self.set_active();
             let done = catch_panic("activateServer", || {
                 // 用户要往 [apps] 里加应用时，从这条日志抄 bundle identifier
                 let bundle = sender.and_then(|s| TextClient::new(s).bundle_identifier());
@@ -117,14 +122,19 @@ define_class!(
         /// 输入源菜单里点了条目：IMK 转发到控制器，sender 是带 IMKCommandMenuItem 的字典。
         #[unsafe(method(menuAction:))]
         fn menu_action(&self, sender: Option<&AnyObject>) {
-            if let Some(action) = menubar::action_from_sender(sender) {
-                host::with(|h| h.perform(action));
+            match menubar::action_from_sender(sender) {
+                Some(menubar::MenuAction::OpenSymbolPanel) => self.open_panel_from_menu(),
+                Some(action) => {
+                    host::with(|h| h.perform(action));
+                }
+                None => {}
             }
         }
 
         #[unsafe(method(deactivateServer:))]
         fn deactivate_server(&self, sender: Option<&AnyObject>) {
             tracing::info!("deactivateServer");
+            self.clear_active();
             let client = sender.map(TextClient::new);
             let done = catch_panic("deactivateServer", || {
                 if let Some(client) = client {
@@ -156,13 +166,16 @@ define_class!(
     unsafe impl NSObjectProtocol for QingjianInputController {}
 );
 
-/// 数字行与小键盘的键码对应的数字 1–9（ANSI 布局的物理键）。
 /// 翻译选中文字最多接受多少个字符：再长既慢又贵，也不是输入法该干的事。
 const MAX_TRANSLATE_CHARS: usize = 500;
 
 /// 给本地整句模型看的光标前文最多读多少字符（Engine 自己再按它的前文长度截）。
 const RESCORE_LOOKBACK: usize = qingjian_core::RESCORE_CONTEXT_CHARS;
 
+/// 登录 / 锁屏窗口的 bundle identifier。
+const LOGIN_WINDOW: &str = "com.apple.loginwindow";
+
+/// 数字行与小键盘的键码对应的数字 1–9（ANSI 布局的物理键）。
 fn digit_key(key_code: u16) -> Option<usize> {
     Some(match key_code {
         18 | 83 => 1,
@@ -179,9 +192,18 @@ fn digit_key(key_code: u16) -> Option<usize> {
 }
 
 impl QingjianInputController {
+    /// 登录 / 锁屏窗口：输入源菜单里没有青简，loginwindow 却照样激活它，按键一律交还系统。
+    ///
+    /// TODO(#190): 临时防护。现象是开机登录界面打不进模式键（u / i），推断为按键进了青简的组句；
+    /// 日志只证实 loginwindow 会激活青简，按键是否真的送来没有复现（开 FileVault 的机器进不到这个界面）。
+    /// 找到按键送进来的条件后改成针对它的判断，并确认别的系统界面有没有同样的情况。
+    fn in_login_window(&self) -> bool {
+        host::with(|h| h.engine.application() == Some(LOGIN_WINDOW)).unwrap_or(false)
+    }
+
     /// 一个按键事件的分发：只管按下；Cmd / Ctrl 组合除 Cmd+左右外一律交给应用；命令键映射成选择器；其余按字符当文本。
     fn dispatch_event(&self, event: &NSEvent, client: TextClient<'_>) -> bool {
-        if event.r#type() != NSEventType::KeyDown {
+        if event.r#type() != NSEventType::KeyDown || self.in_login_window() {
             return false;
         }
         let flags = event.modifierFlags();
@@ -203,6 +225,21 @@ impl QingjianInputController {
         // 翻译选中文字进行中：回车 / 空格 / 1 接受，Esc 放弃，其他键放弃后照常交给应用
         if host::with(|h| h.translation.is_some()).unwrap_or(false) {
             return self.handle_translation_review(key, client);
+        }
+        // 符号面板开着：按键先归面板；敲字母时面板收起、按键照常往下走
+        if host::with(|h| h.engine.symbol_panel().is_some()).unwrap_or(false)
+            && let Some(consumed) = self.handle_panel_key(event, key, pressed, client)
+        {
+            return consumed;
+        }
+        // 高亮还在第一个时按 ↑ 打开符号面板；长按连发的不算，免得往回翻过头弹出来
+        if key == 126
+            && pressed.is_empty()
+            && !event.isARepeat()
+            && host::with(|h| !h.engine.composition().is_empty()).unwrap_or(false)
+            && self.open_panel(client)
+        {
+            return true;
         }
         // 翻译快捷键（不在组句中）：读应用里的选区，交给云端
         let typed = event

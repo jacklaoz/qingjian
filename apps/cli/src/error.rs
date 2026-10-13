@@ -8,6 +8,9 @@ use qingjian_translate::GlossaryError;
 #[derive(Debug, thiserror::Error)]
 pub enum CliError {
     #[error(transparent)]
+    Cold(#[from] crate::cold::error::ColdError),
+
+    #[error(transparent)]
     Dictionary(#[from] DictionaryError),
 
     #[error(transparent)]
@@ -19,8 +22,8 @@ pub enum CliError {
     #[error(transparent)]
     Learning(#[from] LearningError),
 
-    /// 学习语言不是 en / ja / es。
-    #[error("learning language must be en, ja or es, got {0:?}")]
+    /// 学习语言不是 en / ja / es / de。
+    #[error("learning language must be en, ja, es or de, got {0:?}")]
     Language(String),
 
     #[error(transparent)]

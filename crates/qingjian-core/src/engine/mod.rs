@@ -16,6 +16,7 @@ mod input_log;
 mod learning;
 mod marked;
 mod mode_keys;
+mod panel;
 mod prediction;
 mod privacy;
 mod query;
@@ -23,6 +24,7 @@ mod raw;
 mod rescoring;
 mod session;
 mod setup;
+mod spacing;
 mod statistics;
 mod timings;
 mod translator;
@@ -61,23 +63,23 @@ pub use vocabulary::{
     FRESH_UNTIL, LevelCount, NoVocabularyTracker, VocabularySummary, VocabularyTracker,
 };
 
-use crate::candidate::{Candidate, CandidateKind, CandidateList, ExtraCandidates, Language};
+use crate::candidate::{Candidate, CandidateKind, CandidateList, Language};
 use crate::composition::Composition;
 use crate::correction::{self, Correction, TypoCosts, typo};
 use crate::emoji::EmojiTable;
 use crate::english;
 use crate::fuzzy::{Expanded, FuzzyRules};
 use crate::history::InputHistory;
+use crate::panel::SymbolPanel;
 use crate::parser::{self, ParseError, Segmentation};
 use crate::punctuation::Punctuation;
 use crate::ranking::{self, Scored};
 use crate::sentence::{
-    self, Conversion, Interpolation, LanguageModel, NoLanguageModel, Personal, SentenceScorer,
+    self, Conversion, Interpolation, LanguageModel, NoLanguageModel, SentenceScorer,
 };
 use crate::shortcut;
 use crate::shuangpin::Scheme;
-use crate::symbol::SymbolTable;
-use crate::traditional::{Traditional, TraditionalVariant};
+use crate::traditional::Traditional;
 
 use commit::CommitChain;
 
@@ -94,6 +96,9 @@ pub struct Engine {
     /// 附加词库（领域词库、用户导入的），与主词库一起查词、一起进整句词图；不参与语言模型（它们没有 bigram，
     /// 走词频兜底）。壳按用户目录 `dicts/` 与配置 `[dictionaries]` 装配。
     extra_dictionaries: Vec<Dictionary>,
+
+    /// 内置的符号、emoji 名字（尖括号、笑死），带上 emoji 表时启用：词库里没有它们，不收就打不出这个词、也就配不上符号。
+    companion_words: Option<&'static Dictionary>,
 
     /// 英文候选的释义（英→中），缺省为 [`NoTranslator`]。英文候选的辅助语言是主语言中文，
     /// 与中文候选查学习语言的表分开，仍是「一个候选只显示一种辅助语言」。
@@ -120,8 +125,14 @@ pub struct Engine {
     /// 用户定义的固定位置文本。
     custom_phrases: Vec<crate::CustomPhrase>,
 
+    /// 中文模式下整段是英文词（或像英文词的开头）时给不给英文候选与补全（配置 `[general] english_in_chinese`，缺省开）。
+    english_in_chinese: bool,
+
     /// 中英混输时中文候选总在英文词前面（缺省关：拼音不像话的输入英文词排第一，常在中文模式里打英文词的人靠它）。
     chinese_first: bool,
+
+    /// 中西文混排自动补空格（配置 `[general] auto_space`，缺省关）。见 [`crate::spacing`]。
+    auto_space: bool,
 
     /// 中文模式下 Shift+字母进组句缓冲区（配置 `[general] shift_letter = "compose"`，缺省关）。
     /// 关着由壳直接把大写字母交给应用，Core 这一路就不该收——否则 `Cpan` 这种会被当成拼音。
@@ -260,11 +271,23 @@ pub struct Engine {
     /// emoji 表，没有就不出 emoji 候选。
     emoji: Option<EmojiTable>,
 
-    /// 符号表（按输入码查），没有就不出符号候选。
-    symbols: Option<SymbolTable>,
+    /// 每次查询最多插几个 emoji（配置 `[general] emoji`，缺省 3）；0 不出 emoji，表照样加载。
+    emoji_limit: usize,
 
-    /// 候选里出不出 emoji 与符号（配置项 `[general] extras`），缺省两样都出。
-    extras: ExtraCandidates,
+    /// 内置的颜文字表，带上 emoji 表时一起启用。
+    kaomoji: Option<&'static EmojiTable>,
+
+    /// 每次查询最多插几个颜文字（配置 `[general] kaomoji`，缺省 1）。
+    kaomoji_limit: usize,
+
+    /// 内置的符号表，带上 emoji 表时一起启用。
+    symbols: Option<&'static EmojiTable>,
+
+    /// 每次查询最多插几个符号（配置 `[general] symbols`，缺省 1）。
+    symbol_limit: usize,
+
+    /// 打开着的符号面板；`None` 是没开。上屏与清空时关掉。
+    panel: Option<SymbolPanel>,
 
     /// 辅码态：`None` 是拼音态，`Some` 是辅码态（空串 = 刚敲下触发键、码段还没开始）。
     /// 码段不进 `composition`：它与拼音分段记账、分段画（见 [`AuxSegment`]）。
@@ -300,6 +323,13 @@ const ENGLISH_COMPLETIONS: usize = 3;
 /// 原样上屏的字母串至少几个字母才当英文词学：单字母（`a`、`I`）不值得记。
 const MIN_ENGLISH_WORD_LETTERS: usize = 2;
 
+/// 原样上屏的字母串最多几个字母才当英文词学：再长的多半不是一个词，是一整句打不出来的输入
+/// （`yongdockerbushuhenfangbian`），学进去会反过来堵住混输那条路。
+/// 15 是 2026-09-25 按数据定的：用户个人表 1102 条里超过 15 个字母的 9 条全是失败的拼音、无一真词；
+/// 随包英文词表 94568 条里超过 15 个字母的只占 0.69%，而那些词基本都已经在随包表里、不靠学。
+/// 英文模式下不设这个上限：那时敲的本来就是英文。
+const MAX_ENGLISH_WORD_LETTERS: usize = 15;
+
 /// 英文模式一次最多给几条候选：两页足够，再往后没人翻。
 const ENGLISH_MODE_CANDIDATES: usize = 18;
 
@@ -319,22 +349,12 @@ const ENGLISH_SWITCH_PENALTY: f64 = 3.0;
 /// 英文词频的下限（Zipf）：没有词频的词按百万分之一算。
 const ENGLISH_ZIPF_FLOOR: f64 = 3.0;
 
-/// emoji 只配给前几个候选，每个词最多几个、一次最多几个。
+/// emoji、颜文字、符号只配给前几个候选，每个词最多几个、每样一次最多几个。
+/// 颜文字宽，一个词只跟一个，免得把横排撑长。
 const EMOJI_SCAN: usize = 5;
 
-/// 一次查询最多插几个符号候选。
-const SYMBOL_TOTAL: usize = 3;
-
-/// emoji 与符号**合起来**最多占第一页几格。
-///
-/// 两样各自的上限都是 3，撞在一起（`xingxing` → ★ ☆ ✦ 加上 ⭐ 🌟）就是 5 格，
-/// 而第一页一共才 9 格——挑一个符号不该翻到第二页才看得见词。emoji 先插，符号按剩下的格数收着。
-const EXTRAS_TOTAL: usize = 4;
-
-/// 符号插在第几位（0 起）：**第 2 位**。
-/// 首选要留给词——用户打 `duigou` 十有八九是要那个符号，但打 `jiahao` 也可能是要「加号」这个词。
-const SYMBOL_AT: usize = 1;
 const EMOJI_PER_WORD: usize = 2;
+const KAOMOJI_PER_WORD: usize = 1;
 const EMOJI_TOTAL: usize = 3;
 
 /// 自动造词：用户连着选出的两个词，合起来不在词库里、且这条接续已记过这么多次，就记成用户词。
@@ -370,6 +390,15 @@ const MAX_CANDIDATES: usize = 500;
 /// 神经重打分看 Viterbi 的前几条路径：束宽是 8，再多也没有。
 const RESCORE_PATHS: usize = 6;
 
+/// 长输入最多给几条整句候选（重排后的前几条路径）：一条不够用，长句错一个字就得拆开重打。
+const SENTENCE_CANDIDATES: usize = 3;
+
+/// 短于这么多音节的不给备选整句：那时候选表里的词级候选比另一种读法有用。
+const ALTERNATE_MIN_SYLLABLES: usize = 4;
+
+/// 短于这么多字母的不让模型直接生成整句：那么短的输入词级候选够用，生成的几十毫秒不值。
+const MIN_GENERATED_LETTERS: usize = 6;
+
 /// 神经重打分的缺省权重 λ（见 `Engine::neural_weight`）：整句评测集上 0.5 到 1.0 一样好、0.75 最高（见 docs/notes/neural-rescoring.md），
 /// 取 0.5 给个人 n-gram 留余量；回放里看到的「λ 大整句掉」是那把尺子的偏差。
 pub const NEURAL_WEIGHT: f64 = 0.5;
@@ -385,6 +414,7 @@ impl Engine {
         Self {
             dictionary,
             extra_dictionaries: Vec::new(),
+            companion_words: None,
             translator: Box::new(NoTranslator),
             english_translator: Box::new(NoTranslator),
             modes: ModeKeys::default(),
@@ -395,7 +425,9 @@ impl Engine {
             punctuation: Punctuation::default(),
             full_width_punctuation: true,
             custom_phrases: Vec::new(),
+            english_in_chinese: true,
             chinese_first: false,
+            auto_space: false,
             shift_letter_compose: false,
             predictor: Box::new(NoPredictor),
             language_model: Box::new(NoLanguageModel),
@@ -440,8 +472,12 @@ impl Engine {
             code: None,
             phonetic: true,
             emoji: None,
+            emoji_limit: EMOJI_TOTAL,
+            kaomoji: None,
+            kaomoji_limit: 1,
             symbols: None,
-            extras: ExtraCandidates::default(),
+            symbol_limit: 1,
+            panel: None,
             aux_code: None,
             aux_enabled: false,
             aux_show: false,
@@ -474,12 +510,15 @@ fn is_raw(text: &str, modes: ModeKeys, shuangpin: Option<Scheme>, zhuyin: bool) 
 
 /// 命中是否靠模糊音：某个音节不被敲的那个模式接受。
 /// 原样上屏的字母串像不像一个英文词：纯 ASCII 字母、至少两个。中文模式下还要求它**不能**切成完整的拼音
-/// （`hao` 回车多半是要拼音字母本身，`gist` / `python` / `hello` 切不干净才是英文）；英文模式下敲的全是英文，不用判。
+/// （`hao` 回车多半是要拼音字母本身，`gist` / `python` / `hello` 切不干净才是英文），
+/// 且不能长过 [`MAX_ENGLISH_WORD_LETTERS`]；英文模式下敲的全是英文，两条都不用判。
 fn looks_like_english_word(raw: &str, english_mode: bool) -> bool {
     if raw.len() < MIN_ENGLISH_WORD_LETTERS || !raw.bytes().all(|b| b.is_ascii_alphabetic()) {
         return false;
     }
-    english_mode || !parser::is_fully_segmentable(&raw.to_ascii_lowercase())
+    english_mode
+        || (raw.len() <= MAX_ENGLISH_WORD_LETTERS
+            && !parser::is_fully_segmentable(&raw.to_ascii_lowercase()))
 }
 
 /// 模式的记忆化键：完整音节原样，前缀音节后加 `*`。

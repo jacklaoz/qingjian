@@ -1,11 +1,14 @@
 use std::fmt;
 use std::str::FromStr;
 
+use qingjian_dictionary::canonical_syllable;
 use serde::{Deserialize, Serialize};
 
 use super::table::Table;
 use super::{Decoded, Unit, table};
+use crate::fuzzy::FuzzyRules;
 use crate::parser;
+use qingjian_dictionary::SyllablePattern;
 
 /// 双拼方案。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -127,10 +130,18 @@ impl Scheme {
             }
         }
         let initial = self.initial(first)?;
-        self.finals(second).iter().find_map(|final_| {
-            let syllable = format!("{initial}{final_}");
-            parser::is_syllable(&syllable).then_some(syllable)
-        })
+        self.finals(second)
+            .iter()
+            .find_map(|final_| {
+                // jv / qv 这类全拼键盘别名也是合法音节，解码结果统一成词库写法
+                let syllable = format!("{initial}{final_}");
+                parser::is_syllable(&syllable).then(|| canonical_syllable(&syllable).to_owned())
+            })
+            .or_else(|| {
+                // ü 在 j / q / x / y 后写作 u；同键已有的合法音节仍优先。
+                (matches!(initial, "j" | "q" | "x" | "y") && self.finals(second).contains(&"v"))
+                    .then(|| format!("{initial}u"))
+            })
     }
 
     /// 一个全拼音节的主写法（两个键）。测试与文档用；拆成声母 + 韵母后查表，零声母查零声母表。
@@ -162,6 +173,12 @@ impl Scheme {
     /// 把敲的键翻成全拼。两键一组从左到右配对；配不出合法音节的位置起全部原样留作尾巴；
     /// 末尾落单的一键当声母（或元音）前缀；用户自己敲的 `'` 结束当前配对。
     pub fn decode(self, keys: &str) -> Decoded {
+        self.decode_fuzzy(keys, FuzzyRules::default())
+    }
+
+    /// 模糊音能补成合法音节时保留原读音，供查询展开与上屏消耗共用。
+    /// 普通解码优先，关闭模糊音时行为与 [`Self::decode`] 一致。
+    pub(crate) fn decode_fuzzy(self, keys: &str, fuzzy: FuzzyRules) -> Decoded {
         let chars: Vec<char> = keys.chars().collect();
         let mut units = Vec::with_capacity(chars.len() / 2 + 1);
         let mut index = 0;
@@ -174,11 +191,24 @@ impl Scheme {
             }
             let second = chars.get(index + 1).copied().filter(|c| *c != '\'');
             let unit = match second {
-                Some(second) => self.syllable(first, second).map(|pinyin| Unit {
-                    keys: [first, second].iter().collect(),
-                    pinyin,
-                    complete: true,
-                }),
+                Some(second) => self
+                    .syllable(first, second)
+                    .or_else(|| {
+                        if !fuzzy.any() {
+                            return None;
+                        }
+                        let initial = self.initial(first)?;
+                        self.finals(second).iter().find_map(|final_| {
+                            let raw = format!("{initial}{final_}");
+                            let expanded = fuzzy.expand(&[SyllablePattern::complete(&raw)]);
+                            expanded.has_alternatives().then_some(raw)
+                        })
+                    })
+                    .map(|pinyin| Unit {
+                        keys: [first, second].iter().collect(),
+                        pinyin,
+                        complete: true,
+                    }),
                 None => self.partial(first).map(|pinyin| Unit {
                     keys: first.to_string(),
                     pinyin,
@@ -254,6 +284,11 @@ mod tests {
                     "lue" => "lve",
                     "nue" => "nve",
                     "lo" => "luo",
+                    // 全拼的键盘别名，双拼解成词库写法
+                    "jv" => "ju",
+                    "qv" => "qu",
+                    "xv" => "xu",
+                    "yv" => "yu",
                     "eng" if scheme == Scheme::Xiaolang => "en",
                     "dia" if scheme == Scheme::Xiaolang => "dai",
                     "lia" if scheme == Scheme::Xiaolang => "lai",

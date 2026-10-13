@@ -4,14 +4,34 @@ order: 6
 description: 在 Linux 上安装青简，支持 Fcitx5 与 IBus 两种输入法框架。
 ---
 
-青简 Linux 目前提供源码安装，支持 **Fcitx5 与 IBus 两种输入法框架**，候选窗口都用框架自带的面板。
-安装脚本会看这台机器上装了哪个框架，把对应的那份装上。
+青简 Linux 提供预编译包与源码安装，支持 **Fcitx5 与 IBus 两种输入法框架**，候选窗口都用框架自带的面板。
+预编译包目前只有 Fcitx5 那份；源码安装时，安装脚本会看这台机器上装了哪个框架，把对应的那份装上。
 
 已验证 Ubuntu 26.04 的 GNOME 桌面（Wayland）上 Fcitx5 5.1.19 的 GTK4、Qt6 应用与 Firefox；
 IBus 那份验过按键、候选与上屏的完整链路，各类应用里的表现尚未逐个验证。
 其他桌面、其他发行版和旧版应用尚未完成验证。当前支持本地候选、学习和本地整句模型重排，暂不提供云联想与设置窗口。
 
-## 安装和首次输入
+## 预编译包
+
+预编译包在 Ubuntu 26.04（x86_64）上构建，插件与系统的 Fcitx5 版本绑定；其他发行版请用下一节的源码安装。
+先装好 Fcitx5 与 GTK / Qt 输入支持：
+
+```sh
+sudo apt install python3 fcitx5 fcitx5-frontend-gtk3 fcitx5-frontend-gtk4 fcitx5-frontend-qt6 fcitx5-config-qt
+```
+
+从[下载页](https://qingjian.app/download)下载 `qingjian-<版本>-linux-x86_64.tar.gz`，解压后在解出的目录里执行：
+
+```sh
+./install.sh
+
+# 手动启动，保持此终端运行
+~/.local/bin/qingjian-linux-server
+```
+
+之后的添加输入法、首次输入与源码安装相同，见下一节末尾。更新时下载新包再执行一次 `./install.sh`；卸载用包里的 `./uninstall.sh`。
+
+## 源码安装和首次输入
 
 先装 Rust 1.96、Python 3、pkg-config 与 OpenSSL 开发包；再按你用的框架装那一边的东西。
 
@@ -57,12 +77,31 @@ systemctl --user enable --now qingjian-server.service
 
 切换到青简后输入 `nihao`，空格选中「你好」。单击 `Shift` 切换中英；按键规则见 [按键与快捷键](keys.md#linux)。
 
+## 翻页键
+
+中文组句时，默认用 `[` / `]` 上一页 / 下一页，也可用 `PageUp` / `PageDown`；`Shift + Tab` 上一页，`Tab` 在没有整句补全时下一页，有补全时接受补全。
+英文组句中的 `Tab` 是选中高亮候选，不是翻页；完整规则见 [按键与快捷键](keys.md#linux)。
+
+要换成 `-` / `=`，编辑 `~/.config/qingjian/config.toml` 中已有的 `[general]` 分节，然后重启青简服务：
+
+```toml
+[general]
+page_keys = "-="
+```
+
+可选 `"[]"`、`",."`、`"-="`，前一个字符上一页，后一个下一页。不要重复添加 `[general]` 分节。
+青简使用这项配置处理候选翻页，修改 Fcitx5 的全局候选翻页热键不会替代它。
+选择 `",."` 后，中文组句中的逗号、句号用于翻页；选择 `"-="` 后，中文组句中的 `-` 用于翻页，不再进入英文直输段。
+这里匹配的是输入字符，`Shift + -` 的 `_` 和 `Shift + =` 的 `+` 不属于 `"-="`。
+已经进入英文直输段时，`-` 原样追加，不用于翻页。
+
 ## 配置、隐私和数据
 
-首次运行生成 `~/.config/qingjian/config.toml`，修改后重启青简服务（`systemctl --user restart qingjian-server`）。
+首次运行生成 `~/.config/qingjian/config.toml`，保存后约一秒内生效，不用重启；`[general] preedit` 与 `[general] input_log` 例外，改完要重启青简服务（`systemctl --user restart qingjian-server`）。
 `[general] preedit` 可设为 `both`（行内和候选窗口）、`inline`（只在行内）、`window`（只在候选窗口）；应用不支持行内显示时使用候选窗口。
 每页候选数、翻页键、学习、日志和辅助语言使用同一配置文件。`learning_language = "off"` 关闭中文候选的辅助语言释义与生词标记。系统面板外观由框架自己的设置控制（Fcitx5 配置工具 / IBus 首选项）。
-随包的本地整句模型在你停顿后给整句候选重新排序，`[model] enabled = false` 可关闭；自己的 `.qjm` 放 `~/.local/share/qingjian/model/` 优先使用，见 [本地整句模型](../input/local-model.md)。
+
+随附含章·通变与含章·知微两个本地模型：优先用通变处理拼音整句与纠错，没有通变时回退到知微。自己的 `.qjm` 也可放入 `~/.local/share/qingjian/models/` 下对应的模型目录。`[model] enabled = false` 可关闭本地模型，见 [本地整句模型](../input/local-model.md)。
 
 `[general] shift_letter = "compose"` 让 Shift 大写字母参与中文组句，默认 `"passthrough"` 保持临时英文输入。
 `scheme = "zhuyin"` 启用大千注音；双拼下 `Shift + V` / `Shift + U` 可进入表达式 / 码点输入。

@@ -33,6 +33,8 @@
 
 - 代码标识符一律英文，注释与文档用中文；`thiserror` 的 `#[error]` 文案用英文，日志与 UI 文案用中文。
 - 新文件都要有 `//!` 文件头；结构体 / 枚举字段之间空一行，字段名说不清的加 `///`（`r` / `g` / `b`、`width` 这类不用，`a`「255 为不透明」这类要）。
+- 注释只写维护时用得上的：文件头一两句说它是什么、怎么用；代码里只解释读代码看不出来的约束与原因（平台怪癖、协议约定、踩过的坑），一两句说完。
+  不写复述代码的教学性注释，不写改动经过、调试过程这类日志型注释；较长的设计理由写进 `docs/`，注释里留一句指过去。
 - 不写装饰性分隔注释（`// ====`），提交钩子会拦。
 
 ## 依赖与配置
@@ -44,7 +46,7 @@
 
 - `crates/*` 用 `version.workspace = true`；**`apps/*` 各壳是独立发布的产品，写死自己的 `version`**（Windows 读 `server/Cargo.toml`）。
 - 发版之间带 `-dev`（两端都是 `0.1.3-dev`），打包脚本再接 git 短哈希成 `0.1.3-dev-1a2b3c4`（脏加 `+`，Cargo.toml 里只写 `-dev`）。
-- 发版提交去掉 `-dev` 打标签（`macos-v<版本>` / `windows-v<版本>`），标签后再改成下一个 `-dev`；带 `-dev` 的标签 CI 拒绝；pkg / Inno 只认数字点号。
+- 发版提交去掉 `-dev` 打标签 `v<版本>`（三个平台共用一个 Release；单平台补丁用 `macos-v` / `windows-v` / `linux-v<版本>`），标签后再改成下一个 `-dev`；带 `-dev` 的标签 CI 拒绝；pkg / Inno 只认数字点号。
 
 ## 提交信息
 
@@ -55,7 +57,7 @@
   - 范围：crate 或壳的名字——`core` `platform` `render` `dictionary` `translate` `learning` `predict` `lm` `neural` `format` `cli`
     `macos` `windows`（Server / DLL / 设置程序细分时用 `server` `tsf` `settings`）`installer` `linux` `tools` `docs` `ci` `deps` `release`；
     跨好几处的可以省略。不兼容的改动在范围后加 `!`。
-  - 正文写「为什么」与取舍，一行一条；不加 AI 署名。`.githooks/commit-msg` 会拦第一行不合格式的提交。
+  - 正文写「为什么」与取舍，一行一条。`.githooks/commit-msg` 会拦第一行不合格式的提交，合并提交也一样（`git merge --no-ff -m "feat: …"`）。
   - 2026-09-16 之前的历史是「`macOS：……` / `Core：……`」的中文冒号格式，不重写。
 
 ## 文档同步
@@ -68,8 +70,8 @@
 
 - 钩子：`.githooks/pre-commit`（禁装饰性分隔注释 + fmt + clippy）、`.githooks/commit-msg`（提交信息格式）、`.githooks/pre-push`（全 workspace 测试）；`git config core.hooksPath .githooks` 启用一次。
   两个跑编译的钩子按 `uname` 划平台范围：**非 Apple 平台排除 `qingjian-macos`**（IMK 壳依赖 objc2，在别的平台上是硬 `compile_error!`，
-  排除不掉就整条命令失败），与 [ci.yml](../.github/workflows/ci.yml) 三个 job 的划分一致；Windows 上 pre-push 另设 `QINGJIAN_UIACCESS=0`
-  （Server 的 build.rs 嵌 uiAccess manifest，没签名的测试二进制起不来，os error 740）。
+  排除不掉就整条命令失败），与 [ci.yml](../.github/workflows/ci.yml) 三个 job 的划分一致；Server 的 uiAccess 缺省不带
+  （没签名的 exe 带 uiAccess=true 起不来，os error 740），只有 `build.ps1 -Sign` 设 `QINGJIAN_UIACCESS=1` 打开。
 - **在 Linux / Windows 上改 macOS 壳**：排除之后等于盲改——曾有一个缺 import 的错误在 Linux 上提交、好几笔都没人发现。
   `rustup target add aarch64-apple-darwin` 一次，之后 pre-commit 在「这次提交碰了 `apps/macos/`、`crates/` 或依赖」时
   会对 darwin 目标跑一遍 clippy（只做类型检查、不链接，与 CI 的 macOS job 同一道门）；没装这个 target 的人流程不变。

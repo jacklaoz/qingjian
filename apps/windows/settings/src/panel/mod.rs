@@ -9,11 +9,13 @@ mod message;
 mod notice;
 mod pages;
 mod recorder;
+mod system_hotkey;
 
 use std::path::{Path, PathBuf};
 
 use qingjian_platform::Config;
-use windows_reactor::*;
+use qingjian_render::ThemeLibrary;
+use windows_reactor::{ElementRef, PasswordBox, View, ViewContext};
 
 use self::cloud_status::CloudStatus;
 pub(crate) use self::message::Message;
@@ -22,9 +24,6 @@ use self::pages::{
     about, advanced, aux_code, candidates, cloud, dictionaries, fuzzy, general, shortcut, usage,
 };
 use self::recorder::Recorder;
-
-/// 左侧标签固定宽度，让各行控件对齐。
-const LABEL_WIDTH: f64 = 140.0;
 
 /// 设置窗口状态。
 pub(crate) struct Settings {
@@ -50,6 +49,13 @@ pub(crate) struct Settings {
     /// 页面底部的临时提示（导入统计 / 失败原因）。
     notice: Notice,
 
+    /// Server 或「立即检查」落盘的检查更新结果（用户目录的 `update.json`）。
+    update_state: qingjian_update::UpdateState,
+
+    /// 「立即检查」正在跑 / 刚失败的原因。
+    update_checking: bool,
+    update_error: Option<String>,
+
     /// 最近一次词库操作的结果，显示在词库页。
     dictionary_status: String,
 
@@ -64,6 +70,11 @@ impl Settings {
     /// `%APPDATA%\Qingjian\config.toml`；取不到 `APPDATA` 退回工作目录。
     fn config_path() -> PathBuf {
         qingjian_platform::dirs::config_path().unwrap_or_else(|| PathBuf::from("config.toml"))
+    }
+
+    /// 检查更新的结果文件 `%APPDATA%\Qingjian\update.json`（Server 写，这里读）。
+    fn update_state_path() -> Option<PathBuf> {
+        qingjian_platform::dirs::user_dir().map(|dir| dir.join("update.json"))
     }
 
     /// 配置文件不在就写出模板：这个账户下 Server 还没跑过时，保存与「在记事本中打开」都要有文件。
@@ -85,6 +96,22 @@ impl Settings {
             return;
         }
         self.reload();
+    }
+
+    /// 字号框（`style` 是 `candidate` / `annotation`）：清空或填 0 回到主题的，不限范围；
+    /// 没设过时框里显示主题的字号，原样交回不写（见 [`qingjian_platform::FontSize::edited`]）。
+    fn save_font_size(&mut self, style: &str, size: Option<f64>) {
+        let current = match style {
+            "candidate" => self.config.general.candidate_font_size,
+            _ => self.config.general.annotation_font_size,
+        };
+        let themes = ThemeLibrary::load(qingjian_platform::dirs::themes_dir().as_deref());
+        let theme_size = themes
+            .resolve(self.config.general.theme_id(), false)
+            .theme_size(style);
+        if let Some(size) = current.edited(size.filter(|size| !size.is_nan()), theme_size) {
+            self.save("general", &format!("{style}_font_size"), size);
+        }
     }
 
     /// 落盘一个字符串数组再重读。

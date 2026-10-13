@@ -2,6 +2,7 @@
 
 mod aux_code;
 mod cloud;
+mod cloud_trigger;
 mod code;
 mod correction;
 mod custom;
@@ -9,10 +10,11 @@ mod emoji;
 mod english;
 mod learning;
 mod lookup;
+mod panel;
 mod privacy;
 mod raw;
 mod shuangpin;
-mod symbol;
+mod spacing;
 mod traditional;
 mod zhuyin;
 
@@ -153,6 +155,7 @@ unsafe impl Send for EchoPredictor {}
 impl Predictor for EchoPredictor {
     fn policy(&self) -> PredictionPolicy {
         PredictionPolicy {
+            automatic: true,
             before: 4,
             after: 2,
             slots: 2,

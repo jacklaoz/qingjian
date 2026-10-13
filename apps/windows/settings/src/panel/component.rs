@@ -1,9 +1,10 @@
 //! 根组件的 Reactor 生命周期：建状态、按消息落盘、画左侧导航 + 当前页。
 
 use qingjian_platform::{
-    CandidateRenderer, Config, DEFAULT_ENGLISH_CANDIDATES_OFF_WINDOWS, LayoutMode, LogLevel,
-    PreeditMode, ShiftLetter, ThemeMode,
+    Appearance, CandidateRenderer, Config, DEFAULT_ENGLISH_CANDIDATES_ON_WINDOWS, EmojiCount,
+    HighlightKeys, LayoutMode, LogLevel, PreeditMode, ShiftLetter, UpdateChannel,
 };
+use qingjian_render::ThemeLibrary;
 use windows_reactor::*;
 
 use super::cloud_status::CloudStatus;
@@ -29,6 +30,11 @@ impl Component for Settings {
             recorder: Recorder::Idle,
             record_box: ElementRef::new(),
             notice: Notice::default(),
+            update_state: Self::update_state_path()
+                .map(|path| qingjian_update::UpdateState::load(&path))
+                .unwrap_or_default(),
+            update_checking: false,
+            update_error: None,
             dictionary_status: String::new(),
             families: qingjian_render::system_fonts::families(),
             font_query: None,
@@ -60,10 +66,17 @@ impl Component for Settings {
             Message::Traditional(Some(i)) if i < general::TRADITIONAL.len() => {
                 self.save("general", "traditional", general::TRADITIONAL[i].1);
             }
-            Message::Extras(Some(i)) if i < general::EXTRAS.len() => {
-                self.save("general", "extras", general::EXTRAS[i].1);
+            Message::Emoji(Some(count)) if count <= usize::from(EmojiCount::MAX) => {
+                self.save("general", "emoji", count as i64);
+            }
+            Message::Kaomoji(Some(count)) if count <= usize::from(EmojiCount::MAX) => {
+                self.save("general", "kaomoji", count as i64);
+            }
+            Message::Symbols(Some(count)) if count <= usize::from(EmojiCount::MAX) => {
+                self.save("general", "symbols", count as i64);
             }
             Message::EnglishCandidates(on) => self.save("general", "english_candidates", on),
+            Message::EnglishInChinese(on) => self.save("general", "english_in_chinese", on),
             Message::ChineseFirst(on) => self.save("general", "chinese_first", on),
             Message::FullWidthPunctuation(on) => {
                 self.save("general", "full_width_punctuation", on);
@@ -71,25 +84,45 @@ impl Component for Settings {
             Message::EnglishFullWidthPunctuation(on) => {
                 self.save("general", "english_full_width_punctuation", on);
             }
-            Message::EnglishOffInApps(on) => {
+            Message::PunctCommits(on) => {
+                self.save("general", "punct_commits", on);
+            }
+            Message::EnglishOnlyInApps(on) => {
                 let list: Vec<String> = if on {
-                    DEFAULT_ENGLISH_CANDIDATES_OFF_WINDOWS
+                    DEFAULT_ENGLISH_CANDIDATES_ON_WINDOWS
                         .iter()
                         .map(|s| (*s).to_owned())
                         .collect()
                 } else {
-                    Vec::new()
+                    vec!["*".to_owned()]
                 };
-                self.save_array("apps", "english_candidates_off", &list);
+                self.save_array("apps", "english_candidates_on", &list);
             }
-            Message::SwitchMode(Some(i)) if i < general::SWITCH_KEYS.len() => {
-                self.save("shortcut", "switch_mode", general::SWITCH_KEYS[i].1);
+            Message::SystemCtrlSpace(on) => match super::system_hotkey::set_ctrl_space(on) {
+                Ok(()) => self.notice.clear(),
+                Err(error) => self.notice.fail(error),
+            },
+            Message::SwitchKey(key, on) => {
+                let keys = self.config.shortcut.switch_mode.with(key, on);
+                let values: Vec<String> =
+                    keys.config_values().into_iter().map(String::from).collect();
+                self.save_array("shortcut", "switch_mode", &values);
             }
             Message::EnglishMode(on) => self.save("general", "english_mode", on),
+            Message::DefaultEnglish(on) => self.save("general", "default_english", on),
+            Message::RememberModePerApp(on) => self.save("general", "remember_mode_per_app", on),
 
             // 候选窗口页
-            Message::Theme(Some(i)) if i < ThemeMode::ALL.len() => {
-                self.save("general", "theme", ThemeMode::ALL[i].key());
+            Message::Appearance(Some(i)) if i < Appearance::ALL.len() => {
+                self.save("general", "appearance", Appearance::ALL[i].key());
+            }
+            Message::Theme(Some(i)) => {
+                // 与下拉同源：主题库（内置在前、用户主题按 id 排）
+                let themes = ThemeLibrary::load(qingjian_platform::dirs::themes_dir().as_deref());
+                if let Some(theme) = themes.themes().get(i) {
+                    let id = theme.id().to_owned();
+                    self.save("general", "theme", id.as_str());
+                }
             }
             Message::Layout(Some(i)) if i < LayoutMode::ALL.len() => {
                 self.save("general", "layout", LayoutMode::ALL[i].key());
@@ -126,6 +159,13 @@ impl Component for Settings {
                 self.font_query = None;
                 self.save("general", "font", family);
             }
+            Message::CandidateFontSize(size) => self.save_font_size("candidate", size),
+            Message::AnnotationFontSize(size) => self.save_font_size("annotation", size),
+            Message::Animations(on) => self.save("general", "animations", on),
+            Message::ResetFontSizes => {
+                self.save("general", "candidate_font_size", 0);
+                self.save("general", "annotation_font_size", 0);
+            }
             Message::StatusBar(on) => self.save("status_bar", "enabled", on),
 
             // 云服务页
@@ -157,8 +197,21 @@ impl Component for Settings {
             }
 
             // 快捷键页
+            Message::ExtraPageKey(pair, on) => {
+                let values: Vec<String> =
+                    self.config.shortcut.extra_page_keys.with(pair, on).into();
+                self.save_array("shortcut", "extra_page_keys", &values);
+            }
+            Message::TogglePunctuation(on) => self.save(
+                "shortcut",
+                "toggle_punctuation",
+                if on { "ctrl+." } else { "" },
+            ),
             Message::PageKeys(Some(i)) if i < shortcut::PAGE_KEYS.len() => {
                 self.save("general", "page_keys", shortcut::PAGE_KEYS[i].1);
+            }
+            Message::HighlightKeys(Some(i)) if i < HighlightKeys::ALL.len() => {
+                self.save("shortcut", "highlight_keys", HighlightKeys::ALL[i].key());
             }
             Message::ModeExpression(Some(i)) if i < shortcut::MODE_KEYS.len() => {
                 self.save("shortcut", "expression", shortcut::MODE_KEYS[i]);
@@ -274,6 +327,37 @@ impl Component for Settings {
 
             // 关于页
             Message::OpenWebsite => open_with_explorer(about::WEBSITE_URL),
+            Message::OpenDownload => open_with_explorer(qingjian_update::DOWNLOAD_URL),
+
+            // 关于页：检查更新
+            Message::UpdateCheck(on) => self.save("update", "check", on),
+            Message::UpdateChannel(Some(i)) if i < UpdateChannel::ALL.len() => {
+                self.save("update", "channel", UpdateChannel::ALL[i].key());
+            }
+            Message::CheckUpdateNow => {
+                let Some(path) = Self::update_state_path() else {
+                    return;
+                };
+                if self.update_checking {
+                    return;
+                }
+                self.update_checking = true;
+                self.update_error = None;
+                let config = self.config.update.clone();
+                context.spawn_background(move |_cancel| {
+                    let result =
+                        qingjian_update::Checker::check_blocking(&path, about::VERSION, &config);
+                    Message::UpdateChecked(result.map(|r| r.map_err(|error| error.to_string())))
+                });
+            }
+            Message::UpdateChecked(result) => {
+                self.update_checking = false;
+                match result {
+                    Some(Ok(state)) => self.update_state = state,
+                    Some(Err(error)) => self.update_error = Some(error),
+                    None => {}
+                }
+            }
             Message::OpenRepository => open_with_explorer(about::REPOSITORY_URL),
 
             // 下拉被清空 / 越界：不改

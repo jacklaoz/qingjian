@@ -3,13 +3,13 @@
 mod language_model;
 mod spec;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use qingjian_core::{EmojiTable, Engine, Language, SymbolTable};
+use qingjian_core::{EmojiTable, Engine, Language};
 use qingjian_dictionary::{Dictionary, WordList};
 use qingjian_learning::{FrequencyLearner, InputLog, UsageStats, VocabularyBook};
-use qingjian_platform::extra_dictionaries;
+use qingjian_platform::{Config, extra_dictionaries};
 use qingjian_translate::{Glossary, LayeredTranslator, LevelTable, PersonalGlossary};
 
 use crate::error::ServerError;
@@ -75,15 +75,6 @@ pub fn assemble(spec: &AssemblySpec) -> Result<Engine, ServerError> {
         tracing::info!(words = table.len(), "emoji 表已加载");
         engine = engine.with_emoji(table);
     }
-    if let Some(path) = &spec.symbols {
-        match SymbolTable::from_path(path) {
-            Ok(table) => {
-                tracing::info!(codes = table.len(), "符号表已加载");
-                engine = engine.with_symbols(table);
-            }
-            Err(error) => tracing::warn!(%error, "符号表加载失败，不出符号候选"),
-        }
-    }
     if let Some(files) = &spec.language_model {
         let started = Instant::now();
         match files.load() {
@@ -116,8 +107,35 @@ fn load_learner(dir: &Path) -> FrequencyLearner {
     }
 }
 
-/// 随包释义表叠上个人释义表（`user-glossary-<语言>.tsv`）。
-fn load_glossary(
+/// `[general] learning_language`，关着为 `None`；不认识的代码按英文。启动装配与热加载共用。
+pub fn learning_language(config: &Config) -> Option<Language> {
+    if config.general.learning_language_off() {
+        return None;
+    }
+    Some(
+        config
+            .general
+            .learning_language
+            .parse()
+            .unwrap_or(Language::English),
+    )
+}
+
+/// 某语言的释义表：`<root>/data/generated/` 打包过的 `.qj` 优先，否则随 git 的 `assets/glossary/` TSV；都没有为 `None`。
+pub fn glossary_file(root: &Path, language: Language) -> Option<PathBuf> {
+    let code = language.code();
+    [
+        root.join("data/generated")
+            .join(format!("glossary-{code}.qj")),
+        root.join("assets/glossary")
+            .join(format!("glossary-{code}.tsv")),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+}
+
+/// 随包释义表叠上个人释义表（`user-glossary-<语言>.tsv`）。启动装配与热加载换语言共用。
+pub(crate) fn load_glossary(
     language: Language,
     path: &Path,
     user_dir: Option<&Path>,
@@ -146,7 +164,13 @@ fn load_vocabulary(user_dir: &Path, levels_dir: Option<&Path>) -> VocabularyBook
     let Some(levels_dir) = levels_dir else {
         return vocabulary;
     };
-    for language in [Language::English, Language::Japanese, Language::Spanish] {
+    for language in [
+        Language::English,
+        Language::Japanese,
+        Language::Spanish,
+        Language::Vietnamese,
+        Language::German,
+    ] {
         let path = levels_dir.join(format!("levels-{}.tsv", language.code()));
         if !path.is_file() {
             continue;

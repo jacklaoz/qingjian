@@ -73,7 +73,7 @@ fi
 /usr/share/qingjian
 /usr/share/ibus/component/qingjian.xml
 /usr/lib/systemd/user/qingjian-server.service
-/usr/share/icons/hicolor/128x128/apps/qingjian.png
+/usr/share/icons/hicolor/*/apps/qingjian.png
 
 %files fcitx5
 %{_libdir}/fcitx5/qingjian.so

@@ -4,7 +4,7 @@ use super::frame::Frame;
 use super::indicator::IndicatorState;
 use super::key::KeyOutcome;
 use super::session::SessionId;
-use crate::config::SwitchKey;
+use crate::config::{KeyCombo, SwitchKeys};
 
 /// Server 下发给 DLL 的「按键行为」设置。
 ///
@@ -14,8 +14,12 @@ use crate::config::SwitchKey;
 /// `%APPDATA%\Qingjian` 对 AppContainer 里的商店应用本来也读不到。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InputSettings {
+    /// 可选标点切换键；Server 下发并由 DLL 热更新 TSF 保留键。
+    #[serde(default)]
+    pub toggle_punctuation: Option<KeyCombo>,
+
     /// 中英切换键（`[shortcut] switch_mode`）。
-    pub switch_mode: SwitchKey,
+    pub switch_mode: SwitchKeys,
 
     /// 内置英文模式总开关（`[general] english_mode`）。
     pub english_mode: bool,
@@ -24,14 +28,31 @@ pub struct InputSettings {
     /// 按住 Shift 敲的字母吃不吃：缺省交给应用，开着时送 Server 起一段组句（`⇧C` 接 `pan` 出「C盘」）。
     #[serde(default)]
     pub shift_letter_compose: bool,
+
+    /// 重连时先取 Server 的模式，避免旧 DLL 状态覆盖初始模式或按应用记忆。
+    #[serde(default)]
+    pub restore_mode: bool,
+
+    /// 这个会话的应用里英文模式给不给英文候选（`[general] english_candidates` 与 `[apps]` 白名单
+    /// 由 Server 按会话的 exe 名算好）。不给时英文模式与 Caps 下没在组句的字母 DLL 不吃、原样交给应用，
+    /// 否则 Photoshop 画布这类没有文本框的地方收不到 W / H / V 这些单键快捷键。老 Server 不带，按给。
+    #[serde(default = "english_candidates_default")]
+    pub english_candidates: bool,
+}
+
+fn english_candidates_default() -> bool {
+    true
 }
 
 impl Default for InputSettings {
     fn default() -> Self {
         Self {
-            switch_mode: SwitchKey::default(),
+            toggle_punctuation: None,
+            switch_mode: SwitchKeys::default(),
             english_mode: true,
             shift_letter_compose: false,
+            restore_mode: false,
+            english_candidates: true,
         }
     }
 }
@@ -77,22 +98,26 @@ pub enum ServerMessage {
         text: Option<String>,
     },
 
-    /// 不由按键触发的重绘（云联想补词、本地整句模型重排到达）。
+    /// 不由按键触发的重绘（云联想补词、本地整句模型重排到达），或鼠标点候选窗口上屏后的新状态。
     Update {
         /// 会话标识。
         session: SessionId,
 
         /// 要重绘的状态。
         frame: Frame,
+
+        /// 鼠标点候选窗口上屏的文本（v8 起），DLL 写进文档；老 DLL 读不到这个字段，Server 不对它们收点击。
+        #[serde(default)]
+        commit: Option<String>,
     },
 
-    /// 对一次 [`super::ClientMessage::SyncMode`] 的答复：状态条上点出来、还没被取走的目标模式，
+    /// 对一次 [`super::ClientMessage::SyncMode`] 的答复：当前的全局中英模式，
     /// 外加当前的按键行为设置（每一拍都带，DLL 那边热加载就靠它）。
     ModeSync {
         /// 会话标识。
         session: SessionId,
 
-        /// `Some(true)` 切英文、`Some(false)` 切中文；`None` 没有待处理的切换。
+        /// 全局模式：`Some(true)` 英文、`Some(false)` 中文，DLL 与自己不同就跟上；`None` 不动（老 Server 没有待切换时）。
         english: Option<bool>,
 
         /// 按键行为设置；老 DLL 不认识这个字段，读到时忽略（serde 默认忽略多余字段）。

@@ -22,9 +22,6 @@ pub struct AssemblySpec {
     /// emoji 表（多张合成一张）。
     pub emoji: Vec<PathBuf>,
 
-    /// 符号表（按输入码查）。
-    pub symbols: Option<PathBuf>,
-
     /// 语言模型；没有就退化成一元词频整句。
     pub language_model: Option<LanguageModelFiles>,
 
@@ -34,7 +31,7 @@ pub struct AssemblySpec {
     /// `[dictionaries]` 配置。
     pub dictionaries: DictionariesConfig,
 
-    /// 随包辅码码表目录（随包根 `codes/`）。
+    /// 随包辅码码表目录（随包根 `data/generated/codes/`，与 `dicts/` 并列）。
     pub bundled_codes_dir: Option<PathBuf>,
 
     /// `[aux_code]` 配置。
@@ -58,7 +55,6 @@ impl AssemblySpec {
             english_glossary: None,
             english: None,
             emoji: Vec::new(),
-            symbols: None,
             language_model: None,
             bundled_dicts_dir: None,
             dictionaries: DictionariesConfig::default(),

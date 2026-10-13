@@ -7,7 +7,7 @@ use ferrous_opencc::OpenCC;
 use ferrous_opencc::config::BuiltinConfig;
 
 use super::TraditionalVariant;
-use crate::candidate::{CandidateKind, CandidateList, Language, Translation};
+use crate::candidate::{CandidateList, Language, Translation};
 
 /// 简繁转换。
 ///
@@ -77,9 +77,9 @@ impl Traditional {
         };
         let mut restore = self.restore.borrow_mut();
         for item in &mut list.items {
-            // emoji 候选的 reading 是它跟着的那个中文词（🧑‍💻 跟着 软件），也要换，
-            // 不然一屏里混两种字形。中文候选不用 reading，日文假名不是 Emoji 这一类，碰不到
-            if item.kind == CandidateKind::Emoji
+            // emoji、颜文字、符号的 reading 是它跟着的那个中文词（🧑‍💻 跟着 软件），也要换，
+            // 不然一屏里混两种字形。中文候选不用 reading，日文假名不是这几类，碰不到
+            if item.kind.follows_word()
                 && let Some(reading) = &mut item.reading
             {
                 *reading = converter.convert(reading);
@@ -161,7 +161,7 @@ impl std::fmt::Debug for Traditional {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::candidate::{Candidate, Sense};
+    use crate::candidate::{Candidate, CandidateKind, Sense};
 
     fn list(texts: &[&str]) -> CandidateList {
         CandidateList {
