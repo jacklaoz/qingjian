@@ -75,8 +75,8 @@ KDE Plasma（Wayland）上输入法由 KWin 拉起，默认是 fcitx5：「系�
 
 - IBus：「设置 → 键盘 → 输入源」添加「青简」（GNOME），或 `ibus engine qingjian`。
 - fcitx5：`fcitx5-configtool` 里取消「仅显示当前语言」，添加「青简」。
-- 繁体：`~/.config/qingjian/config.toml` 的 `[general] traditional` 写 `taiwan` / `hongkong` / `standard`，
-  再 `systemctl --user restart qingjian-server`（Linux Server 不热加载配置）；flatpak 版的配置在 `~/.var/app/app.qingjian.Qingjian/config/qingjian/`。
+- 配置：`~/.config/qingjian/config.toml`，保存后约一秒内生效（`preedit` 与 `input_log` 两项要重启 Server）；
+  flatpak 版的配置在 `~/.var/app/app.qingjian.Qingjian/config/qingjian/`。
 - 自检（不经过输入法框架，直接问 Server）：`qingjian-linux-ibus --check nihao`；
   flatpak 版是 `flatpak run --command=qingjian-ibus app.qingjian.Qingjian --check nihao`。
 - Server 状态与日志：`systemctl --user status qingjian-server`、`journalctl --user -u qingjian-server`。
@@ -93,6 +93,20 @@ KDE Plasma（Wayland）上输入法由 KWin 拉起，默认是 fcitx5：「系�
 容器里没有图形会话，**真会话里切到青简打字没验**：这一步要在别的机器上装了之后手测，判据见 [linux-dual-frontend.md](linux-dual-frontend.md) 第二节。
 flatpak 的宿主机登记脚本 2026-09-23 在 Arch（KDE Plasma Wayland，IBus 1.5.34）真机上跑过：组件、environment.d、服务都登记上，
 Server 起来，`--check` 出候选，IBus 列得出「青简」（途中踩了下面的注册表缓存坑）。
+
+### 装包自检：`smoke/run.sh`
+
+```bash
+apps/linux/packaging/build.sh deb rpm
+apps/linux/packaging/smoke/run.sh                 # 五个发行版都跑；给镜像名只跑那几个
+```
+
+把 `target/linux-pkg/out/` 的 deb / rpm 拿到 Debian 13、Ubuntu 26.04、Fedora 42、最新 Fedora、openSUSE Tumbleweed 的干净容器里：
+装两个包，看 `systemctl --global` 自启登记、IBus 组件的 `<exec>` 指向的文件在不在、fcitx5 插件缺不缺库，
+起 Server 用包里的 `qingjian-linux-ibus --check nihao` 打一串键（走真前端那套客户端代码，不另抄协议），
+等本地整句模型加载完，卸载后看自启登记与组件清掉没有；哪一项不对退出码非 0。每个容器要装发行版的依赖，跑一遍五六分钟。
+2026-10-14 五个都过（data-v7）：候选「你好 👋 (＾▽＾)ノ 你好好 你好像…」，含章·通变加载并预热。
+flatpak 要宿主机的 flatpak 与 IBus，不在这里验。
 
 ### fcitx5 的依赖与切换框架
 

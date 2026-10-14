@@ -9,7 +9,7 @@
 # - Rust 的 Server 与 IBus 前端在 Ubuntu 22.04 里编一次（glibc 2.35），三种包共用，老一点的发行版也跑得起来；
 # - fcitx5 插件要对着目标发行版自己的 fcitx5 编（CMakeLists 要 5.1.8+），deb 在 Debian 13、rpm 在 Fedora 42 里编。
 # 每种包里 Server 与数据一个包、fcitx5 插件一个包（IBus 前端没有额外依赖，跟 Server 同包）。
-# 设计与限制见 docs/notes/linux-packaging.md。
+# 设计与限制见 docs/notes/linux-packaging.md；打完用 smoke/run.sh 在几个发行版的干净容器里装一遍自检。
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)
 here="$root/apps/linux/packaging"
