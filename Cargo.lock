@@ -2761,7 +2761,7 @@ dependencies = [
 
 [[package]]
 name = "qingjian-linux-server"
-version = "0.2.1-dev"
+version = "0.2.2-dev"
 dependencies = [
  "libc",
  "qingjian-core",
@@ -2792,7 +2792,7 @@ dependencies = [
 
 [[package]]
 name = "qingjian-macos"
-version = "0.2.1-dev"
+version = "0.2.2-dev"
 dependencies = [
  "dotenvy",
  "jiff",
@@ -2922,7 +2922,7 @@ dependencies = [
 
 [[package]]
 name = "qingjian-windows-server"
-version = "0.2.1-dev"
+version = "0.2.2-dev"
 dependencies = [
  "dotenvy",
  "embed-manifest",
@@ -2949,7 +2949,7 @@ dependencies = [
 
 [[package]]
 name = "qingjian-windows-settings"
-version = "0.2.1-dev"
+version = "0.2.2-dev"
 dependencies = [
  "jiff",
  "qingjian-core",
@@ -2970,7 +2970,7 @@ dependencies = [
 
 [[package]]
 name = "qingjian-windows-tsf"
-version = "0.2.1-dev"
+version = "0.2.2-dev"
 dependencies = [
  "qingjian-core",
  "qingjian-platform",
