@@ -261,20 +261,16 @@ IMK 输入法，源码按 `app / host / imk / candidates / menubar / preferences
 
 ```bash
 rustup target add aarch64-apple-darwin
-mkdir -p /tmp/onig/include && : > /tmp/onig/include/oniguruma.h
-cat > /tmp/onig/oniguruma.pc <<'PC'
-prefix=/tmp/onig
-includedir=${prefix}/include
-Name: oniguruma
-Description: 只为 cargo check，不链接
-Version: 6.9.9
-Libs: -lonig
-Cflags: -I${includedir}
-PC
-PKG_CONFIG_PATH=/tmp/onig PKG_CONFIG_ALLOW_CROSS=1 RUSTONIG_SYSTEM_LIBONIG=1 \
+# 在仓库根目录跑。与 .githooks/pre-commit 用同一个目录，钩子跑过一次就已经生成好了
+onig="$PWD/target/darwin-check/onig"
+mkdir -p "$onig/include" && : > "$onig/include/oniguruma.h"
+printf 'prefix=%s\nincludedir=${prefix}/include\nName: oniguruma\nDescription: only for cargo check, never linked\nVersion: 6.9.9\nLibs: -lonig\nCflags: -I${includedir}\n' \
+  "$onig" > "$onig/oniguruma.pc"
+PKG_CONFIG_PATH="$onig" PKG_CONFIG_ALLOW_CROSS=1 RUSTONIG_SYSTEM_LIBONIG=1 \
   cargo clippy --target aarch64-apple-darwin -p qingjian-macos --all-targets -- -D warnings
 ```
 
+第一次要对 darwin 把整棵依赖树检查一遍（只做 check、不生成代码，12 核机器上约半分钟），之后增量一两秒。
 与 CI 的 macOS job 是同一道门（clippy `-D warnings` 含测试目标）；真要跑测试、打包、装机仍得在 Mac 上。
 
 - 输入法菜单（状态项 + 系统输入源菜单）与偏好设置窗口都是配置文件的前端：只写 `config.toml`，`Host::apply_config` 一条通路热加载，激活期间每秒看一次文件 mtime。
