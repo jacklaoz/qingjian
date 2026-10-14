@@ -1,7 +1,7 @@
 {
   "extends": "qingjian",
   "schema": 1,
-  "meta": { "id": "miku", "name": "初音未来", "author": "青简", "license": "GPL-3.0-or-later", "appearance": "light" },
+  "meta": { "id": "miku", "name": "初音未来", "author": "青简", "license": "GPL-3.0-or-later AND LicenseRef-PCL", "appearance": "light" },
 
   "variables": {
     "text": "#142c3b",
