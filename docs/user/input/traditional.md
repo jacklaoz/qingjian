@@ -21,16 +21,13 @@ description: 让候选与上屏的文字变成繁体：台湾正体、香港繁�
 
 ### Linux
 
-Linux 版没有偏好设置窗口，也不会自动读取改过的配置：改配置文件，再重启青简服务。以台湾正体为例：
+Linux 版没有偏好设置窗口：改配置文件里的这一行，保存后约一秒内生效，不用重启。以台湾正体为例：
 
 ```bash
 sed -i 's/^traditional = .*/traditional = "taiwan"/' ~/.config/qingjian/config.toml
-systemctl --user restart qingjian-server
 ```
 
-把 `taiwan` 换成 `hongkong` / `standard` 就是另外两档，改回 `off` 是简体；每次改完都要重启一次服务。
-IBus 与 fcitx5 两种装法都是这个文件。Flatpak 版的配置文件在 `~/.var/app/app.qingjian.Qingjian/config/qingjian/config.toml`，
-重启命令相同。
+把 `taiwan` 换成 `hongkong` / `standard` 就是另外两档，改回 `off` 是简体。
 
 ## 学习数据始终是简体
 
@@ -39,6 +36,10 @@ IBus 与 fcitx5 两种装法都是这个文件。Flatpak 版的配置文件在 `
 - 开着繁体输出时学到的词，改回简体输出后照样优先。
 - 反过来也一样：之前用简体攒下的习惯，开繁体后立刻生效。
 - 删除候选（修饰键 + 数字）删的也是那条简体记录。
+
+## 自定义短语不转换
+
+自定义短语按你写下的原文上屏，开着繁体输出也不改字。想要繁体的短语，直接把短语写成繁体。
 
 ## 仍按简体的拼音与用词输入
 

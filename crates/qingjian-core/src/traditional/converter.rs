@@ -7,7 +7,7 @@ use ferrous_opencc::OpenCC;
 use ferrous_opencc::config::BuiltinConfig;
 
 use super::TraditionalVariant;
-use crate::candidate::{CandidateList, Language, Translation};
+use crate::candidate::{CandidateKind, CandidateList, Language, Translation};
 
 /// 简繁转换。
 ///
@@ -68,6 +68,7 @@ impl Traditional {
     }
 
     /// 把一轮候选换成繁体，并记下「繁体 → 简体」。没开转换时什么都不做。
+    /// 自定义短语不转：它是用户写下的原文，原样上屏（与自动空格跳过它是同一条规矩）。
     ///
     /// 表不在这里清：云端联想词是在 [`crate::Engine::poll_prediction`] 那条路上转的，
     /// 每轮查询清一次会把它的映射冲掉，之后上屏就还原不回简体。清表在组句边界，见 [`Self::forget`]。
@@ -77,6 +78,9 @@ impl Traditional {
         };
         let mut restore = self.restore.borrow_mut();
         for item in &mut list.items {
+            if matches!(item.kind, CandidateKind::Custom(_)) {
+                continue;
+            }
             // emoji、颜文字、符号的 reading 是它跟着的那个中文词（🧑‍💻 跟着 软件），也要换，
             // 不然一屏里混两种字形。中文候选不用 reading，日文假名不是这几类，碰不到
             if item.kind.follows_word()
@@ -161,7 +165,7 @@ impl std::fmt::Debug for Traditional {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::candidate::{Candidate, CandidateKind, Sense};
+    use crate::candidate::{Candidate, Sense};
 
     fn list(texts: &[&str]) -> CandidateList {
         CandidateList {
@@ -292,5 +296,16 @@ mod tests {
         let traditional = Traditional::new(TraditionalVariant::Taiwan);
         assert_eq!(traditional.convert_remember("软件"), "軟體");
         assert_eq!(traditional.restore("軟體").as_deref(), Some("软件"));
+    }
+
+    /// 自定义短语是用户写的原文：开着繁体也原样上屏，不进还原表。
+    #[test]
+    fn custom_phrases_stay_verbatim() {
+        let traditional = Traditional::new(TraditionalVariant::Taiwan);
+        let mut candidates = list(&["软件园"]);
+        candidates.items[0].kind = CandidateKind::Custom(1);
+        traditional.apply(&mut candidates);
+        assert_eq!(candidates.items[0].text, "软件园");
+        assert_eq!(traditional.restore("軟體園"), None);
     }
 }

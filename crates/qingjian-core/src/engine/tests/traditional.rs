@@ -66,3 +66,29 @@ fn translations_still_resolve_after_conversion() {
         Some("develop")
     );
 }
+
+/// 自定义短语是用户写的原文：开着繁体也一个字不改地上屏。
+#[test]
+fn custom_phrases_commit_verbatim() {
+    let mut engine = engine();
+    engine.set_traditional(TraditionalVariant::Taiwan);
+    engine
+        .set_custom_phrases(vec![crate::CustomPhrase {
+            code: "dz".into(),
+            text: "我的地址：软件园".into(),
+            position: 1,
+            enabled: true,
+        }])
+        .unwrap();
+    engine.set_input("dz");
+    let candidate = engine
+        .query()
+        .unwrap()
+        .candidates
+        .items
+        .into_iter()
+        .find(|c| matches!(c.kind, CandidateKind::Custom(_)))
+        .unwrap();
+    assert_eq!(candidate.text, "我的地址：软件园");
+    assert_eq!(engine.commit(&candidate), "我的地址：软件园");
+}

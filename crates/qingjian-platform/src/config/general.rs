@@ -25,7 +25,7 @@ pub const DEFAULT_PAGE_KEYS: (char, char) = ('[', ']');
 /// `learning_language` 写这个值表示不显示译文。
 pub const LEARNING_LANGUAGE_OFF: &str = "off";
 
-/// 读 `[general] traditional`：0.1.3 及以前它是布尔（`true` 就是转繁体，只有一档），
+/// 读 `[general] traditional`：0.2.1 及以前它是布尔（`true` 就是转繁体，只有一档），
 /// 现在是 [`TraditionalVariant`] 的字符串写法。两种都要读得进——布尔当成台湾正体，
 /// 否则老用户升上来配置整个解析失败，连带别的设置一起回缺省。
 fn deserialize_traditional<'de, D>(deserializer: D) -> Result<TraditionalVariant, D::Error>
@@ -36,7 +36,7 @@ where
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum Compat {
-        /// 0.1.3 及以前：`traditional = true`。
+        /// 0.2.1 及以前：`traditional = true`。
         Legacy(bool),
 
         /// 现在：`traditional = "taiwan"`。
@@ -172,7 +172,7 @@ pub struct GeneralConfig {
 
     /// 繁体输出：候选与上屏文本转成哪一地的繁体，缺省不转。
     /// 词库与学习数据始终是简体，只在出 Core 时换（见 [`TraditionalVariant`]）。
-    /// 0.1.3 及以前这一项是布尔，读法见 [`deserialize_traditional`]。
+    /// 0.2.1 及以前这一项是布尔，读法见 [`deserialize_traditional`]。
     #[serde(deserialize_with = "deserialize_traditional")]
     pub traditional: TraditionalVariant,
 
@@ -497,7 +497,7 @@ mod tests {
         );
     }
 
-    /// 0.1.3 及以前 `traditional` 是布尔，升级上来不能解析失败。
+    /// 0.2.1 及以前 `traditional` 是布尔，升级上来不能解析失败。
     #[test]
     fn legacy_traditional_bool_reads_as_taiwan() {
         #[derive(Deserialize)]

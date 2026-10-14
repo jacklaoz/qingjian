@@ -352,7 +352,6 @@ const ENGLISH_ZIPF_FLOOR: f64 = 3.0;
 /// emoji、颜文字、符号只配给前几个候选，每个词最多几个、每样一次最多几个。
 /// 颜文字宽，一个词只跟一个，免得把横排撑长。
 const EMOJI_SCAN: usize = 5;
-
 const EMOJI_PER_WORD: usize = 2;
 const KAOMOJI_PER_WORD: usize = 1;
 const EMOJI_TOTAL: usize = 3;

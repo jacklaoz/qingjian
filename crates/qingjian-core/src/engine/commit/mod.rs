@@ -313,7 +313,10 @@ impl Engine {
                 phrase,
             }
         } else {
-            LastCommit::plain(&text)
+            let mut plain = LastCommit::plain(&candidate.text);
+            plain.chars = text.chars().count();
+            plain.tail = text.chars().last();
+            plain
         };
         self.remember_commit(commit);
         text
