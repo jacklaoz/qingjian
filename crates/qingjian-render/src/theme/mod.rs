@@ -567,11 +567,11 @@ mod tests {
         assert!(Theme::builtin("nope", false).is_none());
         assert_eq!(
             theme.color(&ColorRef::Variable("accent".to_owned())),
-            Color::rgba(176, 206, 125, 127)
+            Color::rgba(148, 190, 82, 127)
         );
         assert_eq!(
             Theme::dark().color(&ColorRef::Variable("accent".to_owned())),
-            Color::rgb(36, 76, 36)
+            Color::rgb(51, 111, 51)
         );
     }
 
