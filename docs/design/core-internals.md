@@ -5,7 +5,7 @@
 以及显示层在三个平台上各画了什么、哪些地方还是各写一份。
 读代码前先看这页，读完直接进 `crates/qingjian-core/src/engine/`。
 
-2026-09-23 对着 main（5da1e07，Linux 本地整句模型重排 #214 之后）写的。实现改了要回来改这里；文中的常数以代码为准。
+2026-09-23 起稿，2026-10-14 对着 main（2b96d75，0.2.1 之后）核过一遍。实现改了要回来改这里；文中的常数以代码为准。
 
 ## 一、`Engine`：75 个字段，分六组
 
@@ -65,7 +65,8 @@ Engine::query()      engine/query/mod.rs，最热的一条路
       │
       ├─ decode                双拼 / 注音先解成全拼（Decoded），之后与全拼同路
       ├─ split_english_tail    末尾是英文词（…xuehaorust）：与整段读成拼音比分（mixed_beats_plain），赢了才拆开
-      ├─ parser::segment       trie 切音节；全拼 / 简拼混排 / 末尾残缺音节；整段切不动就取最长可切前缀
+      ├─ parser::segment       trie 切音节；全拼 / 简拼混排 / 末尾残缺音节；整段切不动就取最长可切前缀；
+      │                        同音节数时不带生僻音节（fiao / biang）的切法在前：biangeng 是 bian geng
       ├─ active_correction     拼音「不像话」（unlikely_pinyin）才试一处编辑的变体；按噪声信道，
       │                        纠后得分扣掉编辑代价仍高于原样才纠；结果按 scope 记进 correction_cache
       │
@@ -78,12 +79,14 @@ Engine::query()      engine/query/mod.rs，最热的一条路
       │
       ├─【整句】insert_sentence → sentence/
       │     词图：每格 lookup_exact，每格留前 6（含简拼的格子留 20），SpanCache 跨按键复用
+      │           词频 0 的生僻字不进图（用户选过的除外），免得 keneng 按 ken eng 读出 肯鞥
       │           correction::typo 敲错边：每个完整音节的一处敲错变体带代价入图
       │     Viterbi + 束搜索（束宽 8）
       │           打分 = (1−μ)·静态 bigram + μ·个人 n-gram，μ = c/(c+8) 封顶 0.5
       │           个人侧先算二元（0.8 / 0.2 插值），上文见过再套绝对折扣三元（D = 0.75）
       │     rescore_paths：装了神经打分器时前 6 条路径按字级 Transformer 重排；
-      │           分数从 neural_cache 取，缺分的攒着等壳送后台，有一条缺分就不动顺序
+      │           分数从 neural_cache 取，缺分的攒着等壳送后台，有一条缺分就不动顺序；
+      │           任一条带打分器字表外的字也不动（那个字只能当 <unk> 算，整条会被压到底）
       │
       ├─ insert_english        与整句谁先进看 chinese_first
       ├─ insert_shortcuts / insert_emoji   emoji、颜文字、符号三张表按各自名额配在对应的词后面
