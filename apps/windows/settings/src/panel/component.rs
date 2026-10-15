@@ -179,6 +179,9 @@ impl Component for Settings {
                 self.save("predict", "slots", slots);
             }
             Message::CloudSentence(on) => self.save("predict", "sentence", on),
+            Message::CloudSentenceTranslation(on) => {
+                self.save("predict", "sentence_translation", on)
+            }
             Message::TestConnection => {
                 if matches!(self.cloud_status, CloudStatus::Testing) {
                     return;

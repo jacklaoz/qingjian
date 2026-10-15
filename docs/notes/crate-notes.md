@@ -68,6 +68,8 @@ macOS 面板一律系统绘制（青简渲染器还没有面板），`candidates
 
 `EngineSession` 保存可挂起的组句、标点、历史与学习链，`Engine::swap_session` 在同一个引擎里交换输入状态，共用词库与落盘服务。切换上下文时清除查询及异步预测缓存，并由平台恢复各自私密状态。
 
+异步预测按请求序号保存待处理状态：组句请求与翻译请求分别只保留最新一条，可同时等待结果；同类旧请求与清空输入后的结果都会丢弃。
+
 `Engine::raw_preedit()`（`engine/raw/`）只读返回 `RawPreedit { text, cursor_bytes }`：完整未上屏组合及 UTF-8 字节光标，与随后 `take_raw()` 共用文本生成，保留大小写、显式分隔符及光标后的剩余内容，不包含待处理辅码；不运行候选查询、不学习、不记日志、统计、历史或展示回报。
 注音继续输出符号；光标按解码单元内按键前缀产生的符号数映射到完整单元的同序字符边界，轻声先敲时采用逻辑位置，一声空格不占显示字符。未知键仍按原解码规则聚到尾串，其光标跟随输出位置而可能不单调；首位固定 0，末位固定完整文本长度。`take_raw()` 的提交和清理顺序不变。
 
@@ -100,7 +102,9 @@ macOS 面板一律系统绘制（青简渲染器还没有面板），`candidates
 
 请求控制：默认防抖 300 ms、最短起始间隔 3000 ms。Engine 的自动入口尊重 `automatic`，显式入口 `request_manual_prediction` 跳过防抖但遵守间隔；取消通道消息清除待发输入，已发结果由序号过滤。缓存命中不受网络间隔限制。SDK 隐式重试关闭，保留模型拒绝关思考参数时的一次显式兼容重试，以及 401/402/403 暂停 10 分钟。
 
-- `CloudPredictor`：`Predictor` trait 的网络实现（async-openai，OpenAI 兼容接口，默认 DeepSeek），后台线程防抖 / 缓存 / 超时，`submit` / `poll` 非阻塞。
+Windows 的 `Router::recompose` 在输入清空时调用 `Engine::cancel_prediction`，同时撤销待发联想与译文；不能只作废各类结果的序号，否则 worker 仍会发送并占用请求间隔。输入未清空时保留按类作废，使未变化的整句候选译文可以继续返回。
+
+- `CloudPredictor`：`Predictor` trait 的网络实现（async-openai，OpenAI 兼容接口，默认 DeepSeek），后台线程按种类合并待发请求，组句与翻译并发发送；`submit` / `poll` 非阻塞。
   `PredictConfig` 是配置的 `[predict]` 分节。只在组句中联想，一次请求给云端词（容错校验后补进候选第一页末尾 `[predict] slots` 格，缺省 2，不预留不占位，
   前面的本地候选不挪；排布在 Core `CandidateLayout`）和整句补全（preedit 右侧，Tab）；上屏后不联想，本地历史不进请求。
   简拼（半数以上音节是缩写）的请求 `max_items = 0`，只求整句补全（`prediction::mostly_abbreviated`）：按声母凑出来的词大多是生造词，
@@ -111,7 +115,7 @@ macOS 面板一律系统绘制（青简渲染器还没有面板），`candidates
   云释义的系统 prompt 在 `gloss/prompt.rs` 按学习语言分派：德语臂 `GERMAN_SYSTEM_PROMPT` 要求名词带冠词 der/die/das 且首字母大写、动词用不定式；
   返回译文经 `clean_text` 按语言设限，德语臂上限 40 字符（`MAX_GERMAN_CHARS`，西语臂 32），字符白名单 `is_latin_ext_char` 为西 / 德共用
   （拉丁扩展区间 0x00C0–0x024F，汉字与西里尔字母不收）。
-- 问字键（缺省 `u`）开头是问字模式（`PredictionKind::Question`，答案带读音、不校验拼音），`?` 开头要 `ModeKeys::question_mark` 开着才算（配置 `[shortcut] question_mark`，缺省关，壳用 `Engine::takes_question_mark` 决定空缓冲区的 `?` 是入口还是标点）；`PredictionKind::Translate` 是壳里快捷键触发的「翻译选中文字」
+- 问字键（缺省 `u`）开头是问字模式（`PredictionKind::Question`，答案带读音、不校验拼音），`?` 开头要 `ModeKeys::question_mark` 开着才算（配置 `[shortcut] question_mark`，缺省关，壳用 `Engine::takes_question_mark` 决定空缓冲区的 `?` 是入口还是标点）；问字 / 表达式两种前缀模式共用 `Engine::english_word_candidate`：整段命中英文词表（用户表优先）时本地给英文词候选、不发云请求，于是 u 开头英文词（`unchanged`）不被问字吞掉；`PredictionKind::Translate` 是壳里快捷键触发的「翻译选中文字」
   （双向：汉字为主译成学习语言，外文译回中文，`prediction::translation_target`），译文走结果的 `sentence`。
 
 ## crates/qingjian-format
@@ -254,6 +258,24 @@ P2C 自由生成实验：`--eval-text <集> --eval-generate data/models/hanzhang
 
 IMK 输入法，源码按 `app / host / imk / candidates / menubar / preferences` 分目录。
 
+**在 Linux 上也能对它做类型检查**（不链接、不产出可执行文件，但编译错误与 clippy 都查得到）。
+`qingjian-macos` 在非 Apple 平台上是硬 `compile_error!`、提交钩子也排除它，于是在 Linux 上改它等于盲改。办法是对 darwin 目标 check，
+唯一的拦路虎是 `onig_sys`（candle → tokenizers 带进来的 C 库）要编 C，给它一个假的 pkg-config 条目让它改走「系统库」：
+
+```bash
+rustup target add aarch64-apple-darwin
+# 在仓库根目录跑。与 .githooks/pre-commit 用同一个目录，钩子跑过一次就已经生成好了
+onig="$PWD/target/darwin-check/onig"
+mkdir -p "$onig/include" && : > "$onig/include/oniguruma.h"
+printf 'prefix=%s\nincludedir=${prefix}/include\nName: oniguruma\nDescription: only for cargo check, never linked\nVersion: 6.9.9\nLibs: -lonig\nCflags: -I${includedir}\n' \
+  "$onig" > "$onig/oniguruma.pc"
+PKG_CONFIG_PATH="$onig" PKG_CONFIG_ALLOW_CROSS=1 RUSTONIG_SYSTEM_LIBONIG=1 \
+  cargo clippy --target aarch64-apple-darwin -p qingjian-macos --all-targets -- -D warnings
+```
+
+第一次要对 darwin 把整棵依赖树检查一遍（只做 check、不生成代码，12 核机器上约半分钟），之后增量一两秒。
+与 CI 的 macOS job 是同一道门（clippy `-D warnings` 含测试目标）；真要跑测试、打包、装机仍得在 Mac 上。
+
 - 输入法菜单（状态项 + 系统输入源菜单）与偏好设置窗口都是配置文件的前端：只写 `config.toml`，`Host::apply_config` 一条通路热加载，激活期间每秒看一次文件 mtime。
   翻页键（`[general] page_keys`）走 `Session::page_target` / `can_turn_page`：选 `-=` 时 `-` / `=` **没有上一页 / 下一页就落回原语义**（英文直输段），别的翻页键翻不动照旧吃键（`imk/controller/display.rs::page_key`）。Windows / Linux 还是老行为，尚未同步。
   输入方案（`[general] scheme`）也在这里装配：双拼 / 注音设给引擎，形码额外按 `paths::code_table_path()` 挂码表
@@ -261,6 +283,11 @@ IMK 输入法，源码按 `app / host / imk / candidates / menubar / preferences
 - `apps/macos/scripts/bundle.sh --install` 打包安装到 `~/Library/Input Methods/`（开发用），`--pkg` 做分发用的 pkg（装 `/Library/Input Methods/`，postinstall 跑 `qingjian-macos --register`
   注册、启用并切成当前输入源；签名 / 公证靠 `QINGJIAN_SIGN_IDENTITY` / `QINGJIAN_INSTALLER_IDENTITY` / `QINGJIAN_NOTARY_PROFILE`，没设就 ad-hoc；`QINGJIAN_TARGET` 指定架构，
   成品 `target/pkg/qingjian-<版本>-macos-<arm64|x86_64>.pkg`）；`scripts/uninstall.sh` 卸载。
+- 装完菜单里没有青简（2026-09-22，macOS 27，`--install` 与 pkg 都遇到）：`--register` 和系统设置里的添加都只让输入模式 `app.qingjian.inputmethod.Hans`
+  显示为已启用，父项 `app.qingjian.inputmethod` 没启用、`com.apple.inputsources` 里也没写进去，菜单里就没有；注销重登后两项都在、菜单正常。
+  所以 postinstall、安装器结尾页与用户文档都把「注销重登」放第一步。当时 `target/Qingjian.app` 也在 LaunchServices 里登记着（同一个 bundle id 两份），
+  bundle.sh 因此在 `--install` / `--pkg` 用完就把 `target/` 与 pkg 暂存目录里的副本删掉、再按路径从 LaunchServices 注销（`forget_bundle`；
+  顺序不能反：登记是异步的，先注销再删会留下指向已删路径的记录）。只是这一步当时没让菜单出现，真正起作用的是重登。
 - 日志在 `~/Library/Logs/Qingjian/`（按天分文件留 7 天，删了会重建），用户数据与配置在 `~/Library/Application Support/Qingjian/`。
 - 配置项：云联想 `[predict]`（偏好设置「云服务」页有「测试连接」按钮：`qingjian_predict::ConnectionTest` 起线程发一条最小请求，`Host` 用独立定时器 `CloudTestMonitor` 轮询结果显示到窗口底部；
   `reasoning_effort` 缺省 `none`，DeepSeek V4 默认思考，不关正文为空）；模糊音 `[fuzzy]` 默认都关；`[general]` 学习语言（`off` 不显示译文）/ 每页候选数 / 翻页键 / 外观 / 竖排横排 / 拼音显示位置 /
