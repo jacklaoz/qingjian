@@ -68,6 +68,10 @@ const KEY_H: u32 = 43;
 const KEY_A: u32 = 38;
 const KEY_O: u32 = 32;
 const KEY_SPACE: u32 = 65;
+const KEY_F: u32 = 41;
+
+/// `IBusModifierType` 的 Ctrl 位。
+const CONTROL: u32 = 1 << 2;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn typing_pinyin_reaches_the_panel_and_commits() {
@@ -248,6 +252,72 @@ async fn pinyin_stays_in_the_old_box_when_focus_moves() {
         new_signals.summary()
     );
     new.focus_out().await.ok();
+}
+
+/// 组句中按 Ctrl+F：键照样交给应用，拼音先原样上屏到当前框。
+///
+/// GNOME Wayland 上应用收到快捷键会先自己挪焦点，失焦时再交 preedit 就落到新框了（真机上见过），
+/// 所以要在按键方法返回之前上屏。
+#[tokio::test(flavor = "multi_thread")]
+async fn shortcut_commits_pinyin_before_reaching_the_app() {
+    if std::env::var_os("QINGJIAN_IBUS_TEST").is_none() {
+        eprintln!("跳过：没设 QINGJIAN_IBUS_TEST=1（它会动当前会话的输入法并写进真实学习数据）");
+        return;
+    }
+    let Some(address) = bus_address() else {
+        eprintln!("跳过：本机没有跑 ibus-daemon");
+        return;
+    };
+    let connection = Builder::address(address.as_str())
+        .expect("IBus 地址")
+        .build()
+        .await
+        .expect("连上 IBus");
+    let bus = IBusProxy::new(&connection).await.expect("IBus 门面");
+    let (context, signals) = open_context(&connection, &bus, "qingjian-shortcut").await;
+    if let Err(per_context) = context.set_engine("qingjian").await
+        && let Err(global) = bus.set_global_engine("qingjian").await
+    {
+        eprintln!("跳过：切不到 qingjian 引擎（按上下文：{per_context}；全局：{global}）");
+        return;
+    }
+    context.focus_in().await.expect("拿焦点");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    for (keyval, keycode) in [
+        ('n', KEY_N),
+        ('i', KEY_I),
+        ('h', KEY_H),
+        ('a', KEY_A),
+        ('o', KEY_O),
+    ] {
+        let consumed = context
+            .process_key_event(keyval as u32, keycode, 0)
+            .await
+            .expect("按键送达");
+        assert!(consumed, "拼音字母该被吃掉：{keyval}");
+    }
+    signals
+        .wait_for("UpdatePreeditText", "ni")
+        .await
+        .unwrap_or_else(|| panic!("preedit 里该有 ni；收到的是 {}", signals.summary()));
+
+    let consumed = context
+        .process_key_event('f' as u32, KEY_F, CONTROL)
+        .await
+        .expect("按键送达");
+    assert!(!consumed, "Ctrl+F 该交给应用");
+    signals
+        .wait_for("CommitText", "nihao")
+        .await
+        .unwrap_or_else(|| panic!("拼音该先原样上屏；收到的是 {}", signals.summary()));
+    context.focus_out().await.ok();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(
+        signals.count("CommitText"),
+        1,
+        "只该上屏一次：{}",
+        signals.summary()
+    );
 }
 
 /// 建一个输入上下文，声明能力并开始收它的信号。

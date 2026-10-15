@@ -139,6 +139,11 @@ impl IBusEngine {
     ///
     /// 抬键也要报上去：中 / 英切换认的是 Shift 的**抬起**（`[shortcut] switch_mode`），
     /// 在这里就地放行的话那个键永远不会生效。吃不吃掉仍由 Server 说了算。
+    ///
+    /// 组句中按下的 Ctrl / Alt / Super 组合键 Server 不处理、交给应用时，先把拼音原样上屏再放行：
+    /// GNOME Wayland 上应用收到 Ctrl+F 这类键会先自己挪焦点，gnome-shell 之后才通知输入法，
+    /// 那时再交出 preedit 已经落到新框或丢掉了。上屏信号在这个方法返回之前发出，比按键先到应用，
+    /// 与 macOS 在应用处理快捷键前 `commitComposition` 的结果一致。
     async fn process_key_event(
         &mut self,
         keyval: u32,
@@ -148,9 +153,23 @@ impl IBusEngine {
     ) -> bool {
         let release = key::is_release(state);
         let event = key::to_key_event(keyval, state);
+        let shortcut = !release && event.modifiers.has_command_key();
         let consumed = self
             .apply(&emitter, "按键", |connection, session| {
-                connection.key(session, event, release)
+                let reply = connection.key(session, event, release)?;
+                if !shortcut
+                    || reply.outcome != KeyOutcome::Passthrough
+                    || reply.frame.preedit.is_empty()
+                {
+                    return Ok(reply);
+                }
+                let flushed = connection.deactivate(session, false, false, false)?;
+                // Deactivate 把会话标成不活跃，焦点其实还在这个框里
+                connection.focus(session, true)?;
+                Ok(Reply {
+                    outcome: KeyOutcome::Passthrough,
+                    ..flushed
+                })
             })
             .await;
         // 排错时要看的是**事件之间的交错**（焦点、能力、按键谁先谁后），少了这一条就只能靠猜
