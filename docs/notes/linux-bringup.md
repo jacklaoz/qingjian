@@ -170,6 +170,13 @@ postinst / postrm 调 `ibus write-cache --system` 让 ibus 重扫。
   随包数据落在 `/app/share/qingjian`（`resources` 的系统布局里加了这条）、
   用户数据进 `~/.var/app/<id>/`，与 `.deb` 装的那份不互通。
 
+- **组句打到一半换输入框**（2026-10-15，评审时报的）：原先在 `FocusOut` 里请 Server 把缓冲原样上屏、
+  自己发 `CommitText`。IBus 的引擎对象在各输入框之间共用，daemon 调完 `FocusOut` 不等回就把引擎挂到下一个框，
+  这条信号到的时候已经晚了：X11 上拼音打进了新框，GNOME Wayland（gnome-shell 自己管输入上下文）上两边都没有。
+  改成 Fcitx5 插件那套：preedit 用 `IBUS_ENGINE_PREEDIT_COMMIT` 发，失焦时由框架当场交给原来的框，
+  `FocusOut` 报 `client_preedit = true`，Server 只清缓冲。端到端测试 `pinyin_stays_in_the_old_box_when_focus_moves`
+  对着私有 daemon 开两个输入上下文钉住它。
+
 ## 还没做的
 
 - ~~**`.rpm`**~~：当天卡在「没有能验的环境」，2026-09-16 用 docker 解决了——构建与验证都在 fedora
