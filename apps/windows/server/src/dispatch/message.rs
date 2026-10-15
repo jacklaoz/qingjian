@@ -81,6 +81,7 @@ impl Router {
                 // 组句在 DLL 侧结束（应用终止组句 / 翻译评审失焦）：只收窗口；缓冲留给下一键的 Commit 清。
                 if self.focused == Some(session) {
                     self.end_translation();
+                    self.cancel_prediction();
                     self.hide_candidate_window();
                 }
                 None
@@ -133,7 +134,8 @@ impl Router {
         if self.translation.is_some() {
             return self.handle_translation_review(session, &event);
         }
-        if self.engine.composition().is_empty()
+        if self.config.cloud_enabled
+            && self.engine.composition().is_empty()
             && !self.panel_open()
             && self.engine.prediction_enabled()
             && self.matches_translate_combo(&event)

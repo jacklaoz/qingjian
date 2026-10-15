@@ -117,13 +117,13 @@ fi
 
 install_prefix=$(realpath -m -- "$install_prefix")
 cargo_output=$(realpath -m -- "${CARGO_TARGET_DIR:-$repo_root/target}")
-cargo_args=(build --manifest-path "$repo_root/Cargo.toml" --target-dir "$cargo_output" -p qingjian-linux-server --locked)
+cargo_args=(build --manifest-path "$repo_root/Cargo.toml" --target-dir "$cargo_output" -p qingjian-linux-server -p qingjian-settings --locked)
 [[ "$want_ibus" != true ]] || cargo_args+=(-p qingjian-linux-ibus)
 [[ "$build_profile" != release ]] || cargo_args+=(--release)
 cargo "${cargo_args[@]}"
 built="$cargo_output/$build_profile"
 
-files_args=(install "$install_prefix" --root "$repo_root" --server "$built/qingjian-linux-server")
+files_args=(install "$install_prefix" --root "$repo_root" --server "$built/qingjian-linux-server" --settings "$built/qingjian-settings")
 [[ "$sample" != true ]] || files_args+=(--sample)
 staged=$(mktemp -d)
 trap 'rm -rf -- "$staged"' EXIT
@@ -168,6 +168,7 @@ echo '已安装：'
 [[ "$want_fcitx5" != true ]] || echo "  fcitx5 插件  $install_prefix/lib/fcitx5/qingjian.so"
 [[ "$want_ibus" != true ]] || echo "  IBus 前端    $install_prefix/bin/qingjian-linux-ibus"
 echo "  Server       $install_prefix/bin/qingjian-linux-server"
+echo "  设置程序     $install_prefix/bin/qingjian-settings（应用菜单里的“青简设置”）"
 # systemd 只从 ~/.config/systemd/user 找用户单元：配置目录被换到别处时（测试、临时安装）单元装在那里它看不见，
 # 按名字 enable 反而会去开本机真装的那一份，所以这种情况不 enable、只提示
 systemd_sees_unit=false

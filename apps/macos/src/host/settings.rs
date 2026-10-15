@@ -3,6 +3,7 @@
 use super::diagnostics::{copy_to_pasteboard, open_with_system};
 use super::*;
 use crate::preferences::DEFAULT_FONT_LABEL;
+use qingjian_core::TraditionalVariant;
 use qingjian_platform::{FontSize, ShiftLetter};
 
 impl Host {
@@ -65,6 +66,14 @@ impl Host {
                 let on = !self.settings.config().fuzzy.is_on(name);
                 if self.settings.set_bool("fuzzy", name, on) {
                     self.apply_config(false);
+                }
+            }
+            MenuAction::OpenSettings => {
+                if let Some(app) = settings_app() {
+                    open_with_system(&[&app.to_string_lossy()]);
+                } else {
+                    tracing::warn!("包里没有设置程序，改开旧版偏好设置");
+                    self.perform(MenuAction::OpenPreferences);
                 }
             }
             MenuAction::OpenPreferences => {
@@ -377,9 +386,6 @@ impl Host {
             (Setting::CloudSlots, SettingValue::Index(index)) => {
                 self.settings.set_value("predict", "slots", index as i64);
             }
-            (Setting::Traditional, SettingValue::Bool(on)) => {
-                self.settings.set_bool("general", "traditional", on);
-            }
             (Setting::EnglishCandidates, SettingValue::Bool(on)) => {
                 self.settings.set_bool("general", "english_candidates", on);
             }
@@ -436,6 +442,15 @@ impl Host {
             (Setting::Wubi, SettingValue::Bool(on)) => {
                 self.settings
                     .set_value("general", "wubi", if on { "wubi86" } else { "" });
+            }
+            // 弹出菜单按 TraditionalVariant::ALL 的顺序，第 0 项是简体
+            (Setting::Traditional, SettingValue::Index(index)) => {
+                let key = TraditionalVariant::ALL
+                    .get(index)
+                    .unwrap_or(&TraditionalVariant::Off)
+                    .key();
+                self.settings
+                    .set_value("general", "traditional_variant", key);
             }
             // 文本框失焦也会发 action：值没变就不写，免得每次切窗口都重写一遍配置
             (Setting::BaseUrl, SettingValue::Text(text)) => {
@@ -567,4 +582,13 @@ impl Host {
                 .set_value("general", &format!("{style}_font_size"), size);
         }
     }
+}
+
+/// 随包的设置程序；直接跑二进制（不在 .app 里）或包里缺它时为 `None`。
+fn settings_app() -> Option<std::path::PathBuf> {
+    let bundle = objc2_foundation::NSBundle::mainBundle()
+        .bundlePath()
+        .to_string();
+    let app = std::path::Path::new(&bundle).join("Contents/Applications/QingjianSettings.app");
+    app.is_dir().then_some(app)
 }

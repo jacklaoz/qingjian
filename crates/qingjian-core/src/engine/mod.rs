@@ -79,6 +79,7 @@ use crate::sentence::{
 };
 use crate::shortcut;
 use crate::shuangpin::Scheme;
+use crate::traditional::Traditional;
 
 use commit::CommitChain;
 
@@ -201,14 +202,14 @@ pub struct Engine {
     /// 这段组句第一键的时刻（算首键到上屏的毫秒）。
     composition_started: Option<Instant>,
 
+    /// 输入统计用的键数与打字时长。
+    typing: statistics::Typing,
+
     /// 正在输入的应用标识，壳在焦点变化时给；写进输入日志。
     application: Option<String>,
 
     /// 上次记 `break` 之后有没有上屏过：没有就不再记，免得失焦一次记一条。
     committed_since_break: bool,
-
-    /// 最近一次联想请求时的作用域：结果可能在上屏之后才到，日志里要记请求时的拼音。
-    last_prediction_scope: String,
 
     /// 输入统计的累计方（打了多少字）；缺省不记。
     meter: Box<dyn UsageMeter>,
@@ -237,11 +238,8 @@ pub struct Engine {
     /// 最近一次联想请求的序号，0 表示还没发过。
     prediction_sequence: u64,
 
-    /// 最近一次联想请求的种类：只有组句联想的结果要按拼音校验。
-    last_prediction_kind: PredictionKind,
-
-    /// 最近一次问字请求里本地把问题拼音转成的汉字，用来剔掉模型复述问题的「答案」。
-    last_question_guess: String,
+    /// 尚未返回的请求。组句联想与整句候选翻译可同时在飞，不能只记最后一条。
+    pending_predictions: HashMap<u64, prediction::PendingPrediction>,
 
     /// 连续上屏的链，个人 n-gram 与自动造词靠它。
     chain: CommitChain,
@@ -309,14 +307,8 @@ pub struct Engine {
     /// 辅码码表，壳按用户目录 `codes/` 与配置装配；空表示没装码表（辅码态筛不出任何词）。
     aux_codes: Vec<Arc<dyn AuxCodeLookup>>,
 
-    /// 繁体输出模式。
-    traditional: bool,
-
-    /// 繁体转换器。
-    opencc: Option<ferrous_opencc::OpenCC>,
-
-    /// 繁体输出时「繁体 → 原简体」的映射，组句结束清空；学习、译词、撤销都按简体原文走。
-    traditional_map: std::cell::RefCell<HashMap<String, String>>,
+    /// 繁体输出：候选出 Core 时换成繁体、上屏时换回简体，缺省不转（见 [`crate::traditional`]）。
+    traditional: Traditional,
 }
 
 /// 形码编码最长几位（五笔四码）：混输下超过它的输入只可能是拼音。
@@ -455,9 +447,9 @@ impl Engine {
             passthrough_pending: String::new(),
             page_turns: 0,
             composition_started: None,
+            typing: statistics::Typing::default(),
             application: None,
             committed_since_break: false,
-            last_prediction_scope: String::new(),
             meter: Box::new(NoUsageMeter),
             vocabulary: Box::new(NoVocabularyTracker),
             gloss_filler: Box::new(NoGlossFiller),
@@ -466,8 +458,7 @@ impl Engine {
             recording: Vec::new(),
             history: InputHistory::default(),
             prediction_sequence: 0,
-            last_prediction_kind: PredictionKind::Compose,
-            last_question_guess: String::new(),
+            pending_predictions: HashMap::new(),
             chain: CommitChain::default(),
             fuzzy: FuzzyRules::default(),
             shuangpin: None,
@@ -488,9 +479,7 @@ impl Engine {
             aux_code_key: DEFAULT_AUX_CODE_KEY,
             aux_keep_empty: true,
             aux_codes: Vec::new(),
-            traditional: false,
-            opencc: None,
-            traditional_map: std::cell::RefCell::new(HashMap::new()),
+            traditional: Traditional::default(),
         }
     }
 }

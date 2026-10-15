@@ -9,6 +9,7 @@ mod display;
 mod error;
 mod eval;
 mod logging;
+mod mine;
 mod repl;
 mod replay;
 mod rescoring;
@@ -71,6 +72,10 @@ fn run() -> Result<(), CliError> {
                 println!("{word}\t{}", codes.join(" "));
             }
         }
+        return Ok(());
+    }
+    if let Some(path) = &args.mine_log {
+        mine::run(&args, path)?;
         return Ok(());
     }
     if let Some(path) = &args.replay {
@@ -303,7 +308,7 @@ fn build_engine(args: &Args) -> Result<Engine, CliError> {
     if config.fuzzy.any() {
         tracing::info!(rules = ?config.fuzzy, "模糊音已启用");
     }
-    engine.set_traditional_mode(config.general.traditional);
+    engine.set_traditional(config.general.traditional());
     engine.set_fuzzy(config.fuzzy);
     engine.set_mode_keys(config.shortcut.mode);
     // `--shuangpin` 现在写的是 [general] scheme（同一个维度的旧键已经并进去），off 就是全拼

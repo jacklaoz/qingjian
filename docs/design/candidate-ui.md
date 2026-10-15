@@ -189,8 +189,8 @@ CLI 用 `--fuzzy z-zh,n-l` 或 `--fuzzy all` 临时开。
 
 ### 双拼（默认关，`[general] shuangpin`）
 
-七套方案：小鹤（`xiaohe`）、自然码（`ziranma`）、微软（`microsoft`）、搜狗（`sogou`）、智能ABC（`abc`）、小浪（`xiaolang`）、首道（`shoudao`）。键位表在 Core `shuangpin::table`，
-按 Rime 的 `double_pinyin*.schema.yaml` 核对（搜狗来自 rime-ice 的整理，小浪来自用户提供的搜狗小浪双拼与 Rime 配置，智能ABC 按公开键位资料核对，首道按作者仓库 shoudaoshuangpin/shoudaoshouyouplus 的键位图、并与万象拼音的拼写运算对过），每套方案对全部音节做往返测试；微软与搜狗只差微软的 `v` 键兼作 üe。
+八套方案：小鹤（`xiaohe`）、自然码（`ziranma`）、微软（`microsoft`）、搜狗（`sogou`）、智能ABC（`abc`）、小浪（`xiaolang`）、首道（`shoudao`）、拼音加加（`jiajia`）。键位表在 Core `shuangpin::table`，
+按 Rime 的 `double_pinyin*.schema.yaml` 核对（搜狗来自 rime-ice 的整理，小浪来自用户提供的搜狗小浪双拼与 Rime 配置，智能ABC 按公开键位资料核对，首道按作者仓库 shoudaoshuangpin/shoudaoshouyouplus 的键位图、并与万象拼音的拼写运算对过，拼音加加以 Rime `double_pinyin_pyjj.schema.yaml`、fcitx5 libime `PinyinJiajia` 与公开键位图三方核对），每套方案对全部音节做往返测试；微软与搜狗只差微软的 `v` 键兼作 üe。
 开着时缓冲区里存的仍是敲的键，Engine 在切分前把键两两配对解成全拼（音节之间自动带 `'`，没有切分歧义），
 之后查词、整句、云联想、学习全部走全拼那一套：拼音行显示解出来的全拼（`nihc` → `ni'hao`），学习按全拼记（`user-choices.tsv` 的键与全拼共用，切回全拼也受益），
 上屏消耗按「候选盖住几个音节、每个音节几个键」换算回缓冲区（`kdfave` 选 开发 吃掉 4 个键，剩 `ve`）。
@@ -282,13 +282,14 @@ Core 按 `prediction::restates_question` 剔掉：与本地转出的问题相同
 |---|---|
 | 云联想（勾选） | 写 `[predict] enabled`。配置开了但 Predictor 没接上（多半是没密钥）时不打勾，标题改成「云联想（启用失败，见日志）」 |
 | 模糊音 ▸ 九条（勾选） | 写 `[fuzzy]` 对应键 |
-| 偏好设置… | 打开设置窗口 |
+| 设置… | 打开设置程序（`Qingjian.app/Contents/Applications/QingjianSettings.app`，见 [settings.md](settings.md)）；包里没有时退回旧版偏好设置 |
+| 旧版设置… | 打开下面这个原生偏好设置窗口，留一个版本作回退 |
 | 打开日志目录 | 访达打开 `~/Library/Logs/Qingjian/` |
 | 有新版本 x.y.z…（查到新版才出现） | 打开下载页，见 [update.md](update.md) |
 | （配置文件有错误：…） | 只在配置解析失败时出现，灰显；此时沿用上一份能用的配置，不让输入法退出 |
 | 青简 0.1.0 | 版本，灰显 |
 
-偏好设置窗口（原生 AppKit，无「保存」按钮，改完立即写回并生效）是 **NSTabView 八页**（通用 / 候选窗口 / 快捷键 / 模糊音 / 词库 / 云服务 / 高级 / 关于），每页一列自上而下，窗口高度取最高的一页：
+旧版偏好设置窗口（原生 AppKit，兜底用；无「保存」按钮，改完立即写回并生效）是 **NSTabView 八页**（通用 / 候选窗口 / 快捷键 / 模糊音 / 词库 / 云服务 / 高级 / 关于），每页一列自上而下，窗口高度取最高的一页：
 「通用」（学习语言：只列打进包里有释义表的语言；每页候选数 1–9；双拼方案；英文模式候选开关与「终端 / 编辑器里不给」）、「候选窗口」（外观 跟随系统 / 浅色 / 深色；
 排布 竖排 / 横排；拼音显示 行内 + 窗口 / 只在行内 / 只在窗口）、「快捷键」（翻页键对与模式键仍是下拉预设；上屏第一 / 第二个译词的修饰键、删除候选的修饰键、翻译选中文字的组合键是**录制按钮**：
 点一下再按组合键，Esc 取消，`preferences/key_recorder.rs` 的 `KeyRecorder`，NSButton 子类接管 `mouseDown:` / `keyDown:`；

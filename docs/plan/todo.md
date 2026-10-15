@@ -131,10 +131,21 @@
   socket 客户端、按键翻译、D-Bus 层（按键 / 焦点 / 重置 / 面板三样）都通了，对着真 ibus-daemon 验过。还差：
   - 密码框与私密输入：`SetContentType` 的映射写了但**没验过**（测试里 IBus 一次都没调它），要找个真密码框试；验法见 [notes/linux-dual-frontend.md](../notes/linux-dual-frontend.md)
   - 按应用设置：IBus 这条路上还没拿到应用标识，`OpenSession` 的 `app` 报 `None`，`[apps]` 分节对它不生效
-  - `focus_out` 的 `client_preedit` 现在一律报 `false`（缓冲原样上屏，同 IBus 老版本的行为），
-    应用自己画 preedit 的场合要在真机上确认该不该报 `true`
+  - ~~`focus_out` 的 `client_preedit`~~：2026-10-15 改报 `true`，preedit 用 COMMIT 模式由框架留在原来的框里
+    （原先自己上屏，换输入框时拼音进了新框或丢掉），见 [notes/linux-bringup.md](../notes/linux-bringup.md)
   - ~~安装脚本按已装框架分支安装、Server 的启动策略~~：`install.sh --frontend auto` 已做，systemd 用户单元 `qingjian-server.service` 随装（`--enable-service` 顺手 enable），两个前端共用一个 Server
   - `[general] preedit` 三档在 IBus 面板下逐个真机验（它的面板能力比 fcitx5 弱），坑见 [notes/linux-bringup.md](../notes/linux-bringup.md)
+- [ ] 设置项的平台缺口（设置程序 `apps/settings/src/support/` 表里标「待实现」的项，输入法接上之前设置里不显示；测试逐条对照这里）：
+  - [ ] 辅码：macOS、Linux
+  - [ ] 默认英文模式：macOS、Linux
+  - [ ] 按应用记住中英模式：macOS、Linux
+  - [ ] 中文与英文、数字之间自动加空格：Windows、Linux
+  - [ ] 横排时 ↑ / ↓ 展开成多行：Windows、Linux
+  - [ ] 额外翻页键：macOS、Linux
+  - [ ] 高亮移动键：macOS、Linux
+  - [ ] Ctrl + . 切换全半角标点：macOS、Linux
+  - [ ] 云服务用量统计：Linux
+  - [ ] 按需云联想与请求节奏：macOS、Linux
 
 ## 四、其他输入方案
 
