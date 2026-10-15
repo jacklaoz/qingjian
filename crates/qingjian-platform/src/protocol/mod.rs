@@ -33,7 +33,8 @@ pub mod frame;
 pub mod key;
 
 /// Linux 前端（Fcitx5 addon / IBus 前端）与 Server 之间多出来的那几种事件。
-#[cfg(target_os = "linux")]
+///
+/// 线上类型不按平台裁掉：Linux Server 在 macOS 上也要编得过（Mac 上的提交钩子对整个 workspace 跑 clippy）。
 pub mod linux;
 
 pub use client::ClientMessage;

@@ -8,6 +8,8 @@
 //!
 //! **缺哪样都跳过**：CI 的 Linux runner 上没有 ibus-daemon，这个测试直接返回。
 
+#![cfg(target_os = "linux")]
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
