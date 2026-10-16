@@ -25,31 +25,6 @@ pub const DEFAULT_PAGE_KEYS: (char, char) = ('[', ']');
 /// `learning_language` 写这个值表示不显示译文。
 pub const LEARNING_LANGUAGE_OFF: &str = "off";
 
-/// 读 `[general] traditional`：0.1.3 及以前它是布尔（`true` 就是转繁体，只有一档），
-/// 现在是 [`TraditionalVariant`] 的字符串写法。两种都要读得进——布尔当成台湾正体，
-/// 否则老用户升上来配置整个解析失败，连带别的设置一起回缺省。
-fn deserialize_traditional<'de, D>(deserializer: D) -> Result<TraditionalVariant, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    /// 老布尔与新字符串两种写法。
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum Compat {
-        /// 0.1.3 及以前：`traditional = true`。
-        Legacy(bool),
-
-        /// 现在：`traditional = "taiwan"`。
-        Variant(TraditionalVariant),
-    }
-
-    Ok(match Compat::deserialize(deserializer)? {
-        Compat::Legacy(true) => TraditionalVariant::Taiwan,
-        Compat::Legacy(false) => TraditionalVariant::Off,
-        Compat::Variant(variant) => variant,
-    })
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GeneralConfig {
@@ -151,7 +126,8 @@ pub struct GeneralConfig {
     /// 关则删空即回纯拼音态。
     pub aux_code_keep_empty: bool,
 
-    /// 拼音侧方案：`pinyin`（全拼，缺省）/ `xiaohe` / `ziranma` / `microsoft` / `sogou` / `abc` / `xiaolang` / `shoudao` / `zhuyin`
+    /// 拼音侧方案：`pinyin`（全拼，缺省）/ `xiaohe` / `ziranma` / `microsoft` / `sogou` / `abc` / `xiaolang` / `shoudao`
+    /// / `jiajia` / `zhuyin`
     /// / `none`（关，只用形码），见 [`Scheme`]。用不认识的写法时按全拼并警告。
     /// 缺省是空串：文件里没写这一项时要去看旧键，见 [`Self::scheme`]。
     pub scheme: String,
@@ -170,11 +146,16 @@ pub struct GeneralConfig {
     /// 旧键（同上的 `[general] zhuyin`）：同上。
     pub zhuyin: Option<bool>,
 
-    /// 繁体输出：候选与上屏文本转成哪一地的繁体，缺省不转。
+    /// 繁体输出：`off` / `taiwan` / `hongkong` / `standard`，空串为没写，读法见 [`Self::traditional`]。
     /// 词库与学习数据始终是简体，只在出 Core 时换（见 [`TraditionalVariant`]）。
-    /// 0.1.3 及以前这一项是布尔，读法见 [`deserialize_traditional`]。
-    #[serde(deserialize_with = "deserialize_traditional")]
-    pub traditional: TraditionalVariant,
+    /// 用字符串不用枚举：配置里出现这一版不认识的写法（退回旧版本时）只让这一项回缺省，不让整个配置解析失败。
+    /// 缺省值是 `off`，但配置里没写这一项时读成空串（字段级 `default`），才轮得到旧键。
+    #[serde(default)]
+    pub traditional_variant: String,
+
+    /// 旧键（0.2.1 及以前的 `[general] traditional`，布尔）：只在 [`Self::traditional`] 里用，
+    /// `traditional_variant` 写了值就不看它。新写法换了键名，旧版本读到新配置时才不会因类型不符整个解析失败。
+    pub traditional: Option<bool>,
 
     /// 日志级别，缺省 info（不含用户敲的内容）。
     pub log_level: LogLevel,
@@ -228,7 +209,8 @@ impl Default for GeneralConfig {
             wubi: String::new(),
             shuangpin: None,
             zhuyin: None,
-            traditional: TraditionalVariant::default(),
+            traditional_variant: TraditionalVariant::Off.key().to_owned(),
+            traditional: None,
             log_level: LogLevel::default(),
             input_log: true,
             learning: true,
@@ -238,6 +220,25 @@ impl Default for GeneralConfig {
 }
 
 impl GeneralConfig {
+    /// 繁体输出：`traditional_variant` 优先；没写时看旧的布尔，`true` 是台湾字形（与 0.2.1 的输出相同）。
+    pub fn traditional(&self) -> TraditionalVariant {
+        let key = self.traditional_variant.trim();
+        if key.is_empty() {
+            return if self.traditional == Some(true) {
+                TraditionalVariant::Taiwan
+            } else {
+                TraditionalVariant::Off
+            };
+        }
+        TraditionalVariant::ALL
+            .into_iter()
+            .find(|variant| variant.key() == key)
+            .unwrap_or_else(|| {
+                tracing::warn!(key, "不认识的繁体输出写法，按简体");
+                TraditionalVariant::Off
+            })
+    }
+
     /// 候选窗口外观。`appearance` 没写时看旧写法（`theme` 写的是 system / light / dark），都没有就跟随系统。
     pub fn appearance(&self) -> Appearance {
         self.appearance
@@ -497,21 +498,25 @@ mod tests {
         );
     }
 
-    /// 0.1.3 及以前 `traditional` 是布尔，升级上来不能解析失败。
+    /// 0.2.1 及以前的 `traditional = true` 照旧出台湾字形；新键优先；不认识的写法只让这一项回简体。
     #[test]
-    fn legacy_traditional_bool_reads_as_taiwan() {
-        #[derive(Deserialize)]
-        struct Holder {
-            #[serde(deserialize_with = "deserialize_traditional")]
-            traditional: TraditionalVariant,
-        }
-
-        let old: Holder = toml::from_str("traditional = true").expect("老配置的布尔写法");
-        assert_eq!(old.traditional, TraditionalVariant::Taiwan);
-        let off: Holder = toml::from_str("traditional = false").expect("老配置的布尔写法");
-        assert_eq!(off.traditional, TraditionalVariant::Off);
-        let new: Holder = toml::from_str("traditional = \"hongkong\"").expect("现在的字符串写法");
-        assert_eq!(new.traditional, TraditionalVariant::Hongkong);
+    fn traditional_variant_wins_over_the_legacy_bool() {
+        let parse = |text: &str| toml::from_str::<GeneralConfig>(text).unwrap().traditional();
+        assert_eq!(parse("traditional = true"), TraditionalVariant::Taiwan);
+        assert_eq!(parse("traditional = false"), TraditionalVariant::Off);
+        assert_eq!(parse(""), TraditionalVariant::Off);
+        assert_eq!(
+            parse("traditional = true\ntraditional_variant = \"off\""),
+            TraditionalVariant::Off
+        );
+        assert_eq!(
+            parse("traditional_variant = \"hongkong\""),
+            TraditionalVariant::Hongkong
+        );
+        assert_eq!(
+            parse("traditional_variant = \"macau\"\npage_size = 5"),
+            TraditionalVariant::Off
+        );
     }
 
     #[test]

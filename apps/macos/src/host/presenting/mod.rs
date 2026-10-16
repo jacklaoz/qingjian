@@ -164,7 +164,7 @@ impl Host {
         let english = crate::imk::modifiers::caps_lock_on();
         qingjian_render::Mode {
             english,
-            traditional: general.traditional != TraditionalVariant::Off,
+            traditional: general.traditional() != TraditionalVariant::Off,
             full_width: !english && general.full_width_punctuation,
             scheme: qingjian_platform::scheme_name(general.scheme(), general.wubi()),
         }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # //! 安装文件清单与校验；不管理桌面服务、系统文件或用户数据。
-# //! 装哪几支（fcitx5 插件 / IBus 前端 / systemd 单元）由 install.sh 决定，这里只按给的路径照做。
+# //! 装哪几支（设置程序 / fcitx5 插件 / IBus 前端 / systemd 单元）由 install.sh 决定，这里只按给的路径照做。
 import argparse
 import hashlib
 import json
@@ -22,6 +22,7 @@ def parse_args():
     parser.add_argument('prefix')
     parser.add_argument('--root', help='仓库根，install 时必给')
     parser.add_argument('--server', help='Server 可执行文件')
+    parser.add_argument('--settings', help='设置程序 qingjian-settings；不给就不装它与菜单项')
     parser.add_argument('--plugin', help='fcitx5 插件 qingjian.so；这一支不装就不给')
     parser.add_argument('--ibus', help='IBus 前端可执行文件；这一支不装就不给')
     parser.add_argument('--ibus-xml', help='IBus 组件 XML（install.sh 按安装路径生成好的）')
@@ -128,6 +129,9 @@ def main():
     files = {prefix / 'share/licenses/qingjian/LICENSE': root / 'LICENSE',
              prefix / 'share/licenses/qingjian/LICENSE-CNS11643.txt': root / 'assets/stroke/LICENSE-CNS11643.txt',
              prefix / 'bin/qingjian-linux-server': Path(options.server)}
+    if options.settings:
+        files[prefix / 'bin/qingjian-settings'] = Path(options.settings)
+        files[data / 'applications/qingjian-settings.desktop'] = root / 'apps/settings/linux/qingjian-settings.desktop'
     # 托盘按名义尺寸挑图，目录名与像素必须一致：源图 1024px 不能直接装进 128x128（#547）。
     for size in (16, 22, 24, 32, 48, 64, 128, 256):
         files[data / f'icons/hicolor/{size}x{size}/apps/qingjian.png'] = (
@@ -156,6 +160,8 @@ def main():
         shutil.copy2(source, temporary)
         if target == data / 'fcitx5/addon/qingjian.conf':
             temporary.write_text(temporary.read_text().replace('Library=qingjian\n', f'Library={prefix}/lib/fcitx5/qingjian\n'))
+        if target == data / 'applications/qingjian-settings.desktop':
+            temporary.write_text(temporary.read_text().replace('Exec=qingjian-settings\n', f'Exec={prefix}/bin/qingjian-settings\n'))
         temporary.replace(target)
         installed[str(target)] = digest(target)
     for filename, checksum in old.items():

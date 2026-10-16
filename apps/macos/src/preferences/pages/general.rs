@@ -150,7 +150,7 @@ impl GeneralPage {
         note(
             layout,
             mtm,
-            "台湾正体连用语一起换（软件 → 軟體、内存 → 記憶體）；词库与学习数据始终是简体，改回简体后学过的词照样在。",
+            "只换字形、不换用语（软件 → 軟件）；台湾与香港的字形取舍不同（裡 / 裏）。词库与学习数据始终是简体，改回简体后学过的词照样在。",
         );
         let punctuation = row_popup(
             layout,
@@ -321,7 +321,7 @@ impl GeneralPage {
             &self.traditional,
             TraditionalVariant::ALL
                 .iter()
-                .position(|variant| *variant == general.traditional),
+                .position(|variant| *variant == general.traditional()),
         );
         select(&self.emoji, Some(usize::from(general.emoji.get())));
         select(&self.kaomoji, Some(usize::from(general.kaomoji.get())));

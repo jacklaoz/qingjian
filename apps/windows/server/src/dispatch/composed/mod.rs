@@ -1,27 +1,40 @@
 //! 组句的展示状态：缓冲变化时重查候选并重建 [`Composed`]，云端词异步并入，高亮 / 翻页，按状态生成给 DLL 的帧。
 
+mod sentence_translation;
 mod state;
 
 use qingjian_core::{
-    Candidate, CandidateKind, CandidateLayout, CandidateList, CloudWord, Query, SurroundingText,
+    Candidate, CandidateKind, CandidateLayout, CandidateList, CloudWord, Language, Query, Sense,
+    SurroundingText, Translation,
 };
 use qingjian_platform::protocol::{Frame, PROTOCOL_VERSION, PreeditKind, PreeditSegment};
 
+use self::sentence_translation::SentenceTranslation;
 pub(super) use self::state::{Composed, TypedKeys};
 use super::Router;
 
 impl Router {
     /// 缓冲变化后：按 Engine 状态重建 [`Composed`]，发一次云联想请求，归零高亮与整句补全。
     pub(super) fn recompose(&mut self) {
+        let previous_sentence_translation =
+            self.composed.take().and_then(|composed| match composed {
+                Composed::Candidates {
+                    sentence_translation,
+                    ..
+                } => sentence_translation,
+                Composed::Raw { .. } => None,
+            });
         self.highlight = 0;
         self.navigated = false;
         self.sentence = None;
         if self.engine.composition().is_empty() {
+            // 清空时也要撤掉 worker 中的待发请求，避免无用请求占掉最短间隔。
+            self.engine.cancel_prediction();
             self.composed = None;
-            self.cancel_prediction();
             self.stop_rescoring();
             return;
         }
+        self.engine.cancel_composition_prediction();
         self.attach_loaded_model();
         let built = self.engine.query().ok().map(|query| {
             let (preedit, cursor, typed_keys) = marked_parts(&query);
@@ -31,15 +44,42 @@ impl Router {
             Some((items, preedit, cursor, typed_keys)) => {
                 let layout =
                     CandidateLayout::new(items, self.config.page_size, self.config.cloud_slots);
-                if self.engine.prediction_enabled() {
+                if self.config.cloud_enabled && self.engine.prediction_enabled() {
                     let surrounding = self.surrounding_for_prediction();
                     self.engine.request_prediction(surrounding, layout.local());
+                }
+                let sentence_candidate = (self.config.sentence_translation
+                    && self.engine.learning_language() != Language::Chinese)
+                    .then(|| {
+                        layout
+                            .local()
+                            .iter()
+                            .find(|candidate| candidate.kind == CandidateKind::Sentence)
+                    })
+                    .flatten();
+                let sentence_translation = sentence_candidate.and_then(|candidate| {
+                    if let Some(annotation) = previous_sentence_translation
+                        && annotation.text == candidate.text
+                    {
+                        return Some(annotation);
+                    }
+                    self.engine.cancel_sentence_translation();
+                    self.engine
+                        .request_sentence_translation(&candidate.text)
+                        .map(|sequence| {
+                            SentenceTranslation::pending(candidate.text.clone(), sequence)
+                        })
+                });
+                if sentence_translation.is_none() {
+                    self.engine.cancel_sentence_translation();
                 }
                 Composed::Candidates {
                     preedit,
                     cursor,
                     typed_keys,
                     layout,
+                    sentence_translation,
+                    manual_sequence: None,
                 }
             }
             None => {
@@ -75,18 +115,64 @@ impl Router {
             }
             return;
         }
-        if let Some(Composed::Candidates { layout, .. }) = self.composed.as_mut() {
-            let words: Vec<Candidate> = prediction
+        let is_sentence_translation = matches!(
+            &self.composed,
+            Some(Composed::Candidates {
+                sentence_translation: Some(annotation),
+                ..
+            }) if annotation.sequence == prediction.sequence
+        );
+        if is_sentence_translation {
+            if let Some(Composed::Candidates {
+                sentence_translation: Some(annotation),
+                ..
+            }) = self.composed.as_mut()
+            {
+                annotation.translation = prediction.sentence.map(|text| {
+                    Translation::new(
+                        self.engine.learning_language(),
+                        vec![Sense {
+                            part_of_speech: None,
+                            text,
+                            reading: None,
+                            fresh: false,
+                        }],
+                    )
+                });
+            }
+            return;
+        }
+        if let Some(Composed::Candidates {
+            layout,
+            manual_sequence,
+            ..
+        }) = self.composed.as_mut()
+        {
+            let manual = manual_sequence.take() == Some(prediction.sequence);
+            self.sentence = prediction.sentence;
+            if self.navigated || self.highlight >= self.config.page_size {
+                return;
+            }
+            let words = prediction
                 .words
                 .into_iter()
                 .map(CloudWord::into_candidate)
                 .collect();
-            layout.set_cloud(words);
-            self.sentence = prediction.sentence;
+            if manual {
+                layout.set_cloud_first(words);
+            } else {
+                layout.set_cloud(words);
+            }
         }
     }
 
     pub(super) fn cancel_prediction(&mut self) {
+        if let Some(Composed::Candidates {
+            manual_sequence, ..
+        }) = self.composed.as_mut()
+        {
+            *manual_sequence = None;
+        }
         if self.engine.prediction_enabled() {
             self.engine.cancel_prediction();
         }
@@ -94,12 +180,70 @@ impl Router {
 
     /// DLL 送来新的光标前文后重发一次云联想：作废在飞的空上下文请求，让云端拿得到 before。
     pub(super) fn refresh_prediction(&mut self) {
-        let Some(Composed::Candidates { layout, .. }) = &self.composed else {
+        if !self.config.cloud_enabled {
+            return;
+        }
+        let Some(Composed::Candidates {
+            layout,
+            manual_sequence,
+            ..
+        }) = &self.composed
+        else {
             return;
         };
+        if manual_sequence.is_some() {
+            self.request_manual_prediction();
+            return;
+        }
+        // 手动结果已到后保持当前布局；新输入会重建状态并恢复自动联想。
+        if layout.cloud_first() {
+            return;
+        }
         let local = layout.local().to_vec();
         let surrounding = self.surrounding_for_prediction();
         self.engine.request_prediction(surrounding, &local);
+    }
+
+    /// 给当前的本地整句候选补上已经返回的云端译文。
+    ///
+    /// 候选布局保留查询原样；画帧、点击和译词快捷键各自拿副本时统一补这一层，
+    /// 才不会让同一条译文只有显示、不能上屏。
+    pub(super) fn annotate_sentence_translation(&self, candidates: &mut CandidateList) {
+        let Some(Composed::Candidates {
+            sentence_translation: Some(annotation),
+            ..
+        }) = &self.composed
+        else {
+            return;
+        };
+        let Some(translation) = &annotation.translation else {
+            return;
+        };
+        for candidate in &mut candidates.items {
+            if candidate.kind == CandidateKind::Sentence && candidate.text == annotation.text {
+                candidate.translation = Some(translation.clone());
+            }
+        }
+    }
+
+    /// 显式触发时使用同一份应用上下文，并记录序号供结果布局匹配。
+    pub(super) fn request_manual_prediction(&mut self) -> bool {
+        if !self.config.cloud_enabled {
+            return false;
+        }
+        let surrounding = self.surrounding_for_prediction();
+        let Some(Composed::Candidates {
+            layout,
+            manual_sequence,
+            ..
+        }) = self.composed.as_mut()
+        else {
+            return false;
+        };
+        *manual_sequence = self
+            .engine
+            .request_manual_prediction(surrounding, layout.local());
+        manual_sequence.is_some()
     }
 
     /// DLL 报来的光标前文包成云联想要的形状；没有就 `None`（Engine 只靠拼音猜）。
@@ -274,6 +418,7 @@ impl Router {
                     .collect();
                 let mut candidates = CandidateList { items };
                 self.engine.annotate(&mut candidates);
+                self.annotate_sentence_translation(&mut candidates);
                 Frame {
                     preedit: preedit.clone(),
                     preedit_mode: self.config.preedit,

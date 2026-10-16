@@ -67,7 +67,7 @@ fn general_and_shortcut_sections_parse() {
     assert_eq!(config.general.symbols, EmojiCount::new(1));
     assert!(config.general.english_in_chinese);
     assert_eq!(
-        config.general.traditional,
+        config.general.traditional(),
         qingjian_core::TraditionalVariant::Off
     );
     assert_eq!(config.general.shuangpin(), None);
@@ -277,6 +277,16 @@ fn cloud_trigger_settings_parse_and_round_trip() {
     assert!(config.predict.automatic);
     assert_eq!(config.predict.debounce_ms, 1200);
     assert_eq!(config.predict.min_interval_ms, 5000);
+    assert_eq!(
+        toml::from_str::<Config>(&toml::to_string(&config).unwrap()).unwrap(),
+        config
+    );
+}
+
+#[test]
+fn manual_prediction_shortcut_round_trips() {
+    let config: Config = toml::from_str("[shortcut]\npredict = \"ctrl+alt+k\"\n").unwrap();
+    assert_eq!(config.shortcut.predict.key, 'k');
     assert_eq!(
         toml::from_str::<Config>(&toml::to_string(&config).unwrap()).unwrap(),
         config

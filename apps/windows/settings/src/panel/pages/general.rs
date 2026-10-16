@@ -22,7 +22,7 @@ pub(crate) const LANGUAGES: [(&str, &str); 6] = [
 /// 繁体输出：界面名 + 配置写法，与 `TraditionalVariant::ALL` 同序。
 pub(crate) const TRADITIONAL: [(&str, &str); 4] = [
     ("简体", "off"),
-    ("繁体（台湾正体）", "taiwan"),
+    ("繁体（台湾）", "taiwan"),
     ("繁体（香港）", "hongkong"),
     ("繁体（通用字形）", "standard"),
 ];
@@ -40,6 +40,7 @@ pub(crate) const SCHEMES: [(&str, &str); Scheme::ALL.len()] = [
     (Scheme::ALL[7].label(), Scheme::ALL[7].key()),
     (Scheme::ALL[8].label(), Scheme::ALL[8].key()),
     (Scheme::ALL[9].label(), Scheme::ALL[9].key()),
+    (Scheme::ALL[10].label(), Scheme::ALL[10].key()),
 ];
 
 pub(crate) fn string_combo(
@@ -113,10 +114,10 @@ pub(crate) fn view(settings: &Settings, context: &mut ViewContext<Settings>) -> 
         ),
         field(
             "输出字形",
-            "台湾正体连用语一起换（软件 → 軟體、内存 → 記憶體）；词库与学习数据始终是简体，改回简体后学过的词照样在。",
+            "只换字形、不换用语（软件 → 軟件）；台湾与香港的字形取舍不同（裡 / 裏）。词库与学习数据始终是简体，改回简体后学过的词照样在。",
             string_combo(
                 &TRADITIONAL,
-                g.traditional.key(),
+                g.traditional().key(),
                 context.callback(Message::Traditional),
             ),
         ),

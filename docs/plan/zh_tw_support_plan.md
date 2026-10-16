@@ -27,9 +27,9 @@
 
 ### 軌道一：在 Core 實作 OpenCC 繁體轉換 (PR 3) —— 已完成（2026-09-16）
 
-落地時與下面的草案有一處不同：設定不是布林 `traditional_output`，而是 `[general] traditional` 四選一
-（`off` / `taiwan` / `hongkong` / `standard`，對應 OpenCC 的 s2twp / s2hk / s2t），因為台灣與香港字形取捨不同、
-台灣那檔還要連用語一起換。轉換只發生在候選出 Core 的那一步，詞庫與學習資料一律是簡體（`crates/qingjian-core/src/traditional/`），
+落地時與下面的草案有一處不同：設定不是布林 `traditional_output`，而是 `[general] traditional_variant` 四選一
+（`off` / `taiwan` / `hongkong` / `standard`，對應 OpenCC 的 s2tw / s2hk / s2t），因為台灣與香港字形取捨不同；
+三檔都只換字形、不換用語。轉換只發生在候選出 Core 的那一步，詞庫與學習資料一律是簡體（`crates/qingjian-core/src/traditional/`），
 使用者說明見 `docs/user/input/traditional.md`。以下為當初的分析。
 
 **目標客群**：習慣打拼音（全拼 / 雙拼），但希望能直接輸出繁體字的用戶。

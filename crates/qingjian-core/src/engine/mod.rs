@@ -202,14 +202,14 @@ pub struct Engine {
     /// 这段组句第一键的时刻（算首键到上屏的毫秒）。
     composition_started: Option<Instant>,
 
+    /// 输入统计用的键数与打字时长。
+    typing: statistics::Typing,
+
     /// 正在输入的应用标识，壳在焦点变化时给；写进输入日志。
     application: Option<String>,
 
     /// 上次记 `break` 之后有没有上屏过：没有就不再记，免得失焦一次记一条。
     committed_since_break: bool,
-
-    /// 最近一次联想请求时的作用域：结果可能在上屏之后才到，日志里要记请求时的拼音。
-    last_prediction_scope: String,
 
     /// 输入统计的累计方（打了多少字）；缺省不记。
     meter: Box<dyn UsageMeter>,
@@ -238,11 +238,8 @@ pub struct Engine {
     /// 最近一次联想请求的序号，0 表示还没发过。
     prediction_sequence: u64,
 
-    /// 最近一次联想请求的种类：只有组句联想的结果要按拼音校验。
-    last_prediction_kind: PredictionKind,
-
-    /// 最近一次问字请求里本地把问题拼音转成的汉字，用来剔掉模型复述问题的「答案」。
-    last_question_guess: String,
+    /// 尚未返回的请求。组句联想与整句候选翻译可同时在飞，不能只记最后一条。
+    pending_predictions: HashMap<u64, prediction::PendingPrediction>,
 
     /// 连续上屏的链，个人 n-gram 与自动造词靠它。
     chain: CommitChain,
@@ -352,7 +349,6 @@ const ENGLISH_ZIPF_FLOOR: f64 = 3.0;
 /// emoji、颜文字、符号只配给前几个候选，每个词最多几个、每样一次最多几个。
 /// 颜文字宽，一个词只跟一个，免得把横排撑长。
 const EMOJI_SCAN: usize = 5;
-
 const EMOJI_PER_WORD: usize = 2;
 const KAOMOJI_PER_WORD: usize = 1;
 const EMOJI_TOTAL: usize = 3;
@@ -451,9 +447,9 @@ impl Engine {
             passthrough_pending: String::new(),
             page_turns: 0,
             composition_started: None,
+            typing: statistics::Typing::default(),
             application: None,
             committed_since_break: false,
-            last_prediction_scope: String::new(),
             meter: Box::new(NoUsageMeter),
             vocabulary: Box::new(NoVocabularyTracker),
             gloss_filler: Box::new(NoGlossFiller),
@@ -462,8 +458,7 @@ impl Engine {
             recording: Vec::new(),
             history: InputHistory::default(),
             prediction_sequence: 0,
-            last_prediction_kind: PredictionKind::Compose,
-            last_question_guess: String::new(),
+            pending_predictions: HashMap::new(),
             chain: CommitChain::default(),
             fuzzy: FuzzyRules::default(),
             shuangpin: None,

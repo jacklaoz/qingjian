@@ -73,6 +73,7 @@
   重排改了切分时应用里的行内拼音要到下一键才更新；日语
 - [ ] 个人微调（LoRA 挂在冻结基模上，基模更新后拿本地日志重训）：先在 train 仓库验证收益，再验 candle CPU 训练能不能跑通，都过了才进壳
   （闲时门禁、加载时合并权重、开关与一键清除）；每个模型假设先按 `docs/plan/model-eval.md` 写尺子与基线
+- [ ] 通变按当前词库重标拼音重训：训练用的旧词库没有 嗯 / 诶 / 囧，字表里也就没有，带这几个字的路径现在整批不重排（`enen` 靠静态模型出 嗯嗯）
 - [ ] 个人英文词表没有衰减（2026-09-24 发现）：`learn_english` 只加不减，`insert_english` 里的 `choice_weight` 只决定
   「要不要当第一」（`english_first`），位置只有 0 和 1 两档——用户选一百次中文候选，那条英文还是钉在词级候选第一位。
   于是打不出来时原样上屏攒下的失败拼音（`houxuanshengcheng`、`shururizhi`）会永久占第一页一格，不危险但也不自愈。
@@ -134,6 +135,17 @@
     应用自己画 preedit 的场合要在真机上确认该不该报 `true`
   - ~~安装脚本按已装框架分支安装、Server 的启动策略~~：`install.sh --frontend auto` 已做，systemd 用户单元 `qingjian-server.service` 随装（`--enable-service` 顺手 enable），两个前端共用一个 Server
   - `[general] preedit` 三档在 IBus 面板下逐个真机验（它的面板能力比 fcitx5 弱），坑见 [notes/linux-bringup.md](../notes/linux-bringup.md)
+- [ ] 设置项的平台缺口（设置程序 `apps/settings/src/support/` 表里标「待实现」的项，输入法接上之前设置里不显示；测试逐条对照这里）：
+  - [ ] 辅码：macOS、Linux
+  - [ ] 默认英文模式：macOS、Linux
+  - [ ] 按应用记住中英模式：macOS、Linux
+  - [ ] 中文与英文、数字之间自动加空格：Windows、Linux
+  - [ ] 横排时 ↑ / ↓ 展开成多行：Windows、Linux
+  - [ ] 额外翻页键：macOS、Linux
+  - [ ] 高亮移动键：macOS、Linux
+  - [ ] Ctrl + . 切换全半角标点：macOS、Linux
+  - [ ] 云服务用量统计：Linux
+  - [ ] 按需云联想与请求节奏：macOS、Linux
 
 ## 四、其他输入方案
 

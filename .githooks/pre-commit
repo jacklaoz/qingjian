@@ -26,8 +26,7 @@ esac
 cargo clippy "${clippy_scope[@]}" --all-targets -- -D warnings
 
 # 非 Apple 平台上 IMK 壳编不了，但对 darwin 目标做类型检查是可以的（不链接、不产出可执行文件）。
-# 为什么要有这一段：7e92a97 缺一个 import，这个壳因此好几笔都编不过、一直没人发现——
-# 在 Linux 上改它等于盲改（见 docs/notes/crate-notes.md 的 apps/macos 一节）。
+# 不做的话在 Linux 上改它等于盲改（见 docs/notes/crate-notes.md 的 apps/macos 一节）。
 # **只在本机装了 aarch64-apple-darwin target 时才跑**，没装的人流程不变；
 # 也只在这次提交碰了 macOS 壳、共享 crate 或依赖时才跑，改 Windows / Linux / 文档不付这个时间。
 if [[ "$(uname -s)" != Darwin ]] \

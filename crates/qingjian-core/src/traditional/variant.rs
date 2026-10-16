@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 /// 候选与上屏文本要不要转成繁体，转成哪一地的写法。
 ///
-/// 不做成布尔是因为台湾与香港的字形取舍不同（裡 / 裏、著 / 着），台湾那档还连用语一起换
-/// （软件 → 軟體、内存 → 記憶體）；一个开关表达不了这三种结果。
+/// 不做成布尔是因为台湾与香港的字形取舍不同（裡 / 裏、著 / 着）；一个开关表达不了这三种结果。
+/// 三档都只换字形不换用语（软件 → 軟件），输入法不替用户改词。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TraditionalVariant {
@@ -13,7 +13,7 @@ pub enum TraditionalVariant {
     #[default]
     Off,
 
-    /// 台湾正体，连用语一起换。OpenCC 的 `s2twp`。
+    /// 台湾字形。OpenCC 的 `s2tw`，与 0.2.1 的 `traditional = true` 相同。
     Taiwan,
 
     /// 香港繁体。OpenCC 的 `s2hk`。
@@ -41,7 +41,7 @@ impl TraditionalVariant {
     pub fn label(self) -> &'static str {
         match self {
             Self::Off => "简体",
-            Self::Taiwan => "繁体（台湾正体）",
+            Self::Taiwan => "繁体（台湾）",
             Self::Hongkong => "繁体（香港）",
             Self::Standard => "繁体（通用字形）",
         }
