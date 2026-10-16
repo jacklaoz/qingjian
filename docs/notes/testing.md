@@ -35,6 +35,11 @@
   ```
   虚拟机目录缺省 `~/vms/freebsd`（`QINGJIAN_FREEBSD_VM`），SSH 转发到本机 2222，桌面用户与本机同名、密码 `qingjian`。
   `vm.sh ssh` 登录、`vm.sh shot 文件.png` 截屏、`vm.sh destroy` 删机重来。
+  QEMU 用户态网络的端口转发在短时间大量新建连接时偶尔卡在握手（`Connection timed out during banner exchange`），
+  所以脚本里的 ssh 共用一条连接（`ControlMaster`），连接级失败重试三次；看到「ssh 连不上虚拟机」提示连着出现，再查虚拟机本身。
+  测试里会在后台常驻的程序（`wl-copy`、`xclip`）一定要把输出接走，否则 ssh 等它们退出，宿主那头就卡住。
+  测试应用每次启动前全部关掉（Kate 收到 SIGTERM 不退，两秒后补 SIGKILL），Mousepad 的会话恢复关掉（被杀后会弹「是否恢复数据」抢走焦点）；
+  Plasma 的会话总线不在环境变量里，`insession` 取桌面里 fcitx5 连着的那条，不能取 `/tmp` 下最新的 dbus 套接字（嵌套 sway 也会建）。
 - **Mac 测试机**：`QINGJIAN_MAC_HOST=user@host`，免密 SSH；同步到那边的 `~/work/qingjian-verify`（`QINGJIAN_MAC_DIR`），不碰手工用的目录。
   没同意 Xcode 许可也能跑（脚本走 Command Line Tools）。`--e2e` 前提：当前输入法已是青简、sshd 有辅助功能权限；
   它会占用那台 Mac 的键盘，并替换已装的青简，新装的要注销重登一次才出现在输入法菜单里。

@@ -35,7 +35,15 @@ case "$app" in
   *) echo "不认识的应用：$app" >&2; exit 2 ;;
 esac
 
-pkill -x "$app" 2>/dev/null; sleep 1
+# 所有测试用的应用都先关掉，不只是这一个：上一个没清理干净的话（比如宿主那头 ssh 断了），
+# 窗口叠在一起，点击落到别的窗口上，后面全都切不到青简。Kate 收到 SIGTERM 不退，两秒后补 SIGKILL
+apps=(mousepad featherpad kate firefox)
+for running in "${apps[@]}"; do pkill -x "$running" 2>/dev/null; done
+sleep 2
+for running in "${apps[@]}"; do pkill -KILL -x "$running" 2>/dev/null; done
+# 被杀掉的 Mousepad 下次启动会弹「是否恢复数据」，焦点落在对话框上就没有输入框
+gsettings set org.xfce.mousepad.preferences.file session-restore never 2>/dev/null
+sleep 1
 daemon -f -o "/tmp/qingjian-e2e-$mode-$app.log" "${launch[@]}"
 
 # 等窗口出来并把键盘焦点给它（Firefox 第一次起新配置要二三十秒）

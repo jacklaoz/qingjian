@@ -62,7 +62,7 @@ for entry in "${matrix[@]}"; do
     esac
   done <<< "$result"
   [[ "$result" == *PASS* || "$result" == *FAIL* || "$result" == *FLAKY* ]] || { fail "$env · $app 没跑出结果：$result"; status=1; }
-  vm_ssh "pkill -x $app" || true
+  vm_ssh "pkill -x $app; sleep 2; pkill -KILL -x $app" || true
 done
 $nested && vm_ssh '~/bin/insession ~/bin/nested-sway.sh stop' || true
 # 回到缺省的 XFCE，下次手工上去看是熟悉的样子

@@ -20,16 +20,28 @@ ok() { printf '\033[32m通过\033[0m %s\n' "$*"; }
 fail() { printf '\033[31m失败\033[0m %s\n' "$*" >&2; }
 die() { fail "$*"; exit 1; }
 
-# vm_ssh [root@] 命令…：缺省以 vm_user 登录；StrictHostKeyChecking 关掉是因为虚拟机重建后主机密钥会变
+# 连虚拟机的 ssh 选项。StrictHostKeyChecking 关掉是因为虚拟机重建后主机密钥会变；
+# 连接复用：QEMU 用户态网络的端口转发在短时间大量新建连接时偶尔卡在握手（banner exchange 超时），共用一条连接就少撞上
+vm_ssh_options=(-i "$vm_dir/id_ed25519" -p "$vm_port" -o StrictHostKeyChecking=no -o UserKnownHostsFile="$vm_dir/known_hosts"
+  -o LogLevel=ERROR -o ConnectTimeout=20 -o ControlMaster=auto -o "ControlPath=$vm_dir/ssh-%r" -o ControlPersist=10m)
+
+# vm_ssh [root@] 命令…：缺省以 vm_user 登录。ssh 自己出错（退出码 255，多半是连接没建起来）重连再试，最多三次
 vm_ssh() {
-  local user=$vm_user
+  local user=$vm_user attempt code
   if [[ "${1:-}" == *@ ]]; then user=${1%@}; shift; fi
-  ssh -i "$vm_dir/id_ed25519" -p "$vm_port" -o StrictHostKeyChecking=no -o UserKnownHostsFile="$vm_dir/known_hosts" \
-    -o LogLevel=ERROR -o ConnectTimeout=5 "$user@127.0.0.1" "$@"
+  for attempt in 1 2 3; do
+    # 写成 && || 的形式：调用方开着 set -e，失败的 ssh 不能直接把脚本带走，得先判断要不要重试
+    ssh "${vm_ssh_options[@]}" "$user@127.0.0.1" "$@" && code=0 || code=$?
+    ((code == 255)) || return "$code"
+    printf '\033[33mssh 连不上虚拟机（第 %d 次），重试\033[0m\n' "$attempt" >&2
+    ssh "${vm_ssh_options[@]}" -O exit "$user@127.0.0.1" 2>/dev/null
+    sleep 3
+  done
+  return 255
 }
 
 vm_rsync() {
-  rsync -a -e "ssh -i $vm_dir/id_ed25519 -p $vm_port -o StrictHostKeyChecking=no -o UserKnownHostsFile=$vm_dir/known_hosts -o LogLevel=ERROR" "$@"
+  rsync -a -e "ssh ${vm_ssh_options[*]}" "$@"
 }
 
 vm_running() { [[ -f "$vm_dir/qemu.pid" ]] && kill -0 "$(cat "$vm_dir/qemu.pid")" 2>/dev/null; }
