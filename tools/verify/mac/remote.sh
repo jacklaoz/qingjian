@@ -114,11 +114,13 @@ step '切到青简'
 mac "\"$app/Contents/MacOS/qingjian-macos\" --register >/dev/null 2>&1
   for i in 1 2 3 4 5 6; do sleep 2; osascript /tmp/select-input.applescript 青简 2>/dev/null && exit 0; done; exit 1" \
   || die '输入法菜单里没有「青简」：在系统设置 → 键盘 → 输入法里添加，或注销重登一次'
-# 输入法刚重启：词库与本地模型加载完之前敲的键会被吃掉，整句也出不来（含章·通变生成的候选），等日志里出现预热完成
+# 输入法刚重启：词库与本地模型加载完之前敲的键会被吃掉，整句也出不来（含章·通变生成的候选），等日志里出现预热完成。
+# 进程被结束后系统不一定马上重新拉起它（刚重新登录时就是），要有输入框拿到焦点才起：等不到就开一个 TextEdit 文档把它唤起来再等
 # shellcheck disable=SC2016 # 在那台 Mac 上展开
-mac 'log=~/Library/Logs/Qingjian/qingjian.log.$(date -u +%F); for i in $(seq 30); do
-    tail -n +'"$((log_lines + 1))"' "$log" 2>/dev/null | grep -q "本地模型已加载并预热" && exit 0; sleep 1; done; exit 1' \
-  || die '30 秒内没等到本地模型加载完（看那边的 ~/Library/Logs/Qingjian/）'
+wait_model='log=~/Library/Logs/Qingjian/qingjian.log.$(date -u +%F); for i in $(seq 30); do
+    tail -n +'"$((log_lines + 1))"' "$log" 2>/dev/null | grep -q "本地模型已加载并预热" && exit 0; sleep 1; done; exit 1'
+mac "$wait_model" || { mac "osascript /tmp/textedit.applescript WAIT" >/dev/null; mac "$wait_model"; } \
+  || die '一分钟内没等到本地模型加载完（看那边的 ~/Library/Logs/Qingjian/）'
 
 step 'TextEdit 端到端：发按键、读回文本（别碰那台 Mac 的键盘）'
 status=0
