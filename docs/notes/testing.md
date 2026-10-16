@@ -49,6 +49,9 @@
   输入法进程被结束后菜单里会暂时没有它，脚本用 `qingjian-macos --register` 重新启用，再等日志里出现「本地模型已加载并预热」才开始。
   排查时 `QINGJIAN_CASES=文件` 换用例、`QINGJIAN_MAC_DEBUG=1` 让输入法打调试日志并取回 `target/verify/mac-ime.log`。`--e2e` 前提：当前输入法已是青简、sshd 有辅助功能权限；
   它会占用那台 Mac 的键盘，并替换已装的青简，新装的要注销重登一次才出现在输入法菜单里。
+- **推送**：pre-push 钩子跑全量测试要一分多钟，这期间 git 与 GitHub 的 ssh 连接是空闲的，有的网络会把它断掉——
+  测试全过了 `git push` 却以 141（SIGPIPE）退出、什么都没推上去。给 github.com 开 ssh 保活（`~/.ssh/config` 里 `ServerAliveInterval 10`，
+  或 `GIT_SSH_COMMAND="ssh -o ServerAliveInterval=10" git push …`）。
 
 ## 图形端到端怎么判对错
 
@@ -78,6 +81,7 @@
 | 合并 main 时 | 设置程序截图脚本在 Linux 上去点不存在的「云服务」统计页，中途失败 | 修了脚本；CI 与 `local` 实际跑一遍 |
 | 合并 main 时 | 本地 `data/generated` 与 `data.lock` 不是同一版，装到别处才报校验失败 | `freebsd` 一律按 `data.lock` 下载校验 |
 | Qt / Firefox / KDE / Wayland 手工验证 | 全靠手打和截图，换个提交就得重来 | `freebsd-e2e` |
+| 合并 #351 之后 | 选区翻译的缺省键只在 `target_os = "linux"` 下是 Alt+Shift+T，FreeBSD 落进 macOS 那支；测试写死 Alt+Shift+T，在 Mac 上跑全量也失败 | `freebsd`、`mac`（两处都改了） |
 
 ## 还覆盖不到的
 
