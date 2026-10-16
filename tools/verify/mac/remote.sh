@@ -5,7 +5,8 @@
 #   --e2e    打包安装再跑用例。/Library 下已有 pkg 版时只能装 pkg（要 sudo），打好包、打印安装命令后停下（退出码 3）；
 #            ~/Library 下的开发版（或都没装）就直接 bundle.sh --install。新装的输入法要注销重登一次才出现在菜单里。
 #   --cases  不同步不编译，只对已装的版本跑用例；先核对已装版本的短哈希与当前提交一致，免得测的是别的版本。
-#            QINGJIAN_CASES=文件 换一份用例（格式同 tools/verify/cases.tsv）；QINGJIAN_MAC_DEBUG=1 让输入法打调试日志并取回。排查时用。
+#            QINGJIAN_CASES=文件 换一份用例（格式同 tools/verify/cases.tsv）；QINGJIAN_MAC_DEBUG=1 让输入法打调试日志并取回；
+#            QINGJIAN_MAC_EXPECT=短哈希 指定装着的应该是哪个提交。排查时用。
 # 端到端会占用那台 Mac 的键盘（两边按键会穿插），跑之前先确认没人在用它。
 set -euo pipefail
 # shellcheck source=../lib.sh
@@ -78,7 +79,8 @@ if [[ "$mode" == --e2e ]]; then
 fi
 
 step '核对装着的是这个提交'
-expected=$(git -C "$repo_root" rev-parse --short HEAD)
+# QINGJIAN_MAC_EXPECT=短哈希 指定要核对的版本：排查已装的某个版本、而本地又多了只改脚本的提交时用
+expected=${QINGJIAN_MAC_EXPECT:-$(git -C "$repo_root" rev-parse --short HEAD)}
 installed=$(mac "/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' '/Library/Input Methods/Qingjian.app/Contents/Info.plist' 2>/dev/null \
   || /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' ~/'Library/Input Methods/Qingjian.app/Contents/Info.plist'")
 [[ "$installed" == *"$expected"* ]] || die "装着的是 $installed，不是当前提交 $expected（pkg 没装上？看那边的 /var/log/install.log）"
