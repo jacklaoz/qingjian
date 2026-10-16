@@ -109,6 +109,7 @@ ImageMagick；不要把 1024px 源图塞进尺寸目录，也不要只装 `resou
 Server、插件、设置程序与 Linux 共用一份代码，差异只有几处，都按 `target_os` / `__linux__` 分开写：
 
 - 对端身份：Linux 用 `SO_PEERCRED`，FreeBSD 用 `getpeereid`（glibc 没有后者，所以不能统一成一个）。Server（`ipc/connection.rs`）与插件（`ipc/connection.cpp`）各一处。
+- 配置：缺省值与配置模板里按平台分的项（选区翻译的 Alt+Shift+T、`[shortcut]` 的写法）按「不是 Windows 也不是 macOS」走 Linux 那套，不写 `target_os = "linux"`。
 - 字体：FreeBSD 的字体包装在 `/usr/local/share/fonts`（中文是 `noto/NotoSansCJKsc-Regular.otf`），清单在 `bamboo-slip` 的 `fonts/linux.rs`。
 - 安装脚本只依赖 bash 与 python3：`realpath -m` 是 GNU 独有，换成了 `os.path.realpath`。
 - 插件测试：`sockets()` 在 FreeBSD 上读 `procstat -f`（默认不挂 `/proc`），子进程随父进程退出用 `procctl(PROC_PDEATHSIG_CTL)`；
