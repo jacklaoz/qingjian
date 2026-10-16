@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use super::scheme::{Scheme, scheme_label};
 use super::{
-    Appearance, CandidateRenderer, EmojiCount, FontSize, LayoutMode, LogLevel, PreeditMode,
-    ShiftLetter,
+    Appearance, CandidateRenderer, EmojiCount, FontSize, LayoutMode, LegacyTraditional, LogLevel,
+    PreeditMode, ShiftLetter,
 };
 
 /// 每页最多几个候选：数字键只有 1–9。
@@ -153,9 +153,9 @@ pub struct GeneralConfig {
     #[serde(default)]
     pub traditional_variant: String,
 
-    /// 旧键（0.2.1 及以前的 `[general] traditional`，布尔）：只在 [`Self::traditional`] 里用，
+    /// 旧键 `[general] traditional`（0.2.1 及以前是布尔，繁体三档的开发版写过字符串）：只在 [`Self::traditional`] 里用，
     /// `traditional_variant` 写了值就不看它。新写法换了键名，旧版本读到新配置时才不会因类型不符整个解析失败。
-    pub traditional: Option<bool>,
+    pub traditional: Option<LegacyTraditional>,
 
     /// 日志级别，缺省 info（不含用户敲的内容）。
     pub log_level: LogLevel,
@@ -220,23 +220,17 @@ impl Default for GeneralConfig {
 }
 
 impl GeneralConfig {
-    /// 繁体输出：`traditional_variant` 优先；没写时看旧的布尔，`true` 是台湾字形（与 0.2.1 的输出相同）。
+    /// 繁体输出：`traditional_variant` 优先；没写时看旧键，`true` 是台湾字形（与 0.2.1 的输出相同），字符串按同一套写法读。
     pub fn traditional(&self) -> TraditionalVariant {
         let key = self.traditional_variant.trim();
-        if key.is_empty() {
-            return if self.traditional == Some(true) {
-                TraditionalVariant::Taiwan
-            } else {
-                TraditionalVariant::Off
-            };
+        if !key.is_empty() {
+            return traditional_from_key(key);
         }
-        TraditionalVariant::ALL
-            .into_iter()
-            .find(|variant| variant.key() == key)
-            .unwrap_or_else(|| {
-                tracing::warn!(key, "不认识的繁体输出写法，按简体");
-                TraditionalVariant::Off
-            })
+        match &self.traditional {
+            Some(LegacyTraditional::Flag(true)) => TraditionalVariant::Taiwan,
+            Some(LegacyTraditional::Key(key)) => traditional_from_key(key.trim()),
+            Some(LegacyTraditional::Flag(false)) | None => TraditionalVariant::Off,
+        }
     }
 
     /// 候选窗口外观。`appearance` 没写时看旧写法（`theme` 写的是 system / light / dark），都没有就跟随系统。
@@ -369,6 +363,17 @@ impl GeneralConfig {
     }
 }
 
+/// 繁体输出的字符串写法；不认识的只让这一项回简体。
+fn traditional_from_key(key: &str) -> TraditionalVariant {
+    TraditionalVariant::ALL
+        .into_iter()
+        .find(|variant| variant.key() == key)
+        .unwrap_or_else(|| {
+            tracing::warn!(key, "不认识的繁体输出写法，按简体");
+            TraditionalVariant::Off
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,9 +503,9 @@ mod tests {
         );
     }
 
-    /// 0.2.1 及以前的 `traditional = true` 照旧出台湾字形；新键优先；不认识的写法只让这一项回简体。
+    /// 0.2.1 及以前的 `traditional = true` 照旧出台湾字形；开发版在旧键里写的字符串也认；新键优先；不认识的写法只让这一项回简体。
     #[test]
-    fn traditional_variant_wins_over_the_legacy_bool() {
+    fn traditional_variant_wins_over_the_legacy_key() {
         let parse = |text: &str| toml::from_str::<GeneralConfig>(text).unwrap().traditional();
         assert_eq!(parse("traditional = true"), TraditionalVariant::Taiwan);
         assert_eq!(parse("traditional = false"), TraditionalVariant::Off);
@@ -517,6 +522,19 @@ mod tests {
             parse("traditional_variant = \"macau\"\npage_size = 5"),
             TraditionalVariant::Off
         );
+        assert_eq!(parse("traditional = \"off\""), TraditionalVariant::Off);
+        assert_eq!(
+            parse("traditional = \"hongkong\""),
+            TraditionalVariant::Hongkong
+        );
+        assert_eq!(
+            parse("traditional = \"hongkong\"\ntraditional_variant = \"standard\""),
+            TraditionalVariant::Standard
+        );
+        let unknown = toml::from_str::<GeneralConfig>("traditional = \"macau\"\npage_size = 5")
+            .expect("旧键写错不能让整个配置解析失败");
+        assert_eq!(unknown.traditional(), TraditionalVariant::Off);
+        assert_eq!(unknown.page_size, 5);
     }
 
     #[test]

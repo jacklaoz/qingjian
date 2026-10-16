@@ -9,6 +9,7 @@ mod general;
 mod highlight_keys;
 mod key_combo;
 mod layout_mode;
+mod legacy_traditional;
 mod log_level;
 mod model;
 mod modifiers;
@@ -49,6 +50,7 @@ pub use general::{
 pub use highlight_keys::HighlightKeys;
 pub use key_combo::KeyCombo;
 pub use layout_mode::LayoutMode;
+pub use legacy_traditional::LegacyTraditional;
 pub use log_level::LogLevel;
 pub use model::LocalModelConfig;
 pub use modifiers::Modifiers;
