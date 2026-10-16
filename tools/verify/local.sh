@@ -31,5 +31,8 @@ snapshot() {
   rm -rf "$home"
 }
 run settings-png snapshot
+# 没截出图就算失败：脚本中途出错时进程照样可能退出 0（比如磁盘写满）
+shopt -s nullglob
 shots=("$verify_out"/settings-png/*.png)
+((${#shots[@]} > 0)) || { fail '设置程序一张截图都没出'; exit 1; }
 echo "  截图：$verify_out/settings-png（${#shots[@]} 张）"

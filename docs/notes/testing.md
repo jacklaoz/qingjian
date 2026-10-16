@@ -16,7 +16,7 @@
 | `freebsd` | `freebsd/check.sh` | FreeBSD 虚拟机里：按 `data.lock` 取数据、`install.sh` 安装、全 workspace 测试、插件 ctest、安装脚本测试 | 改了 Linux / FreeBSD 共用的代码 | 5 分钟 / 15 分钟 |
 | `freebsd-e2e` | `freebsd/e2e.sh` | 图形端到端：Plasma X11、XFCE X11、嵌套 sway（Wayland）× Mousepad / FeatherPad / Kate / Firefox，跑 `cases.tsv` | 改了输入链路（Linux 前端、Core、platform、用例） | 15 分钟 |
 | `mac` | `mac/remote.sh` | Mac 测试机上整个 workspace 的 clippy 与测试（同 Mac 上的钩子） | 改了 macOS 壳、共享 crate、依赖 | 2 分钟 / 12 分钟 |
-| `mac-e2e` | `mac/remote.sh --e2e` | 打包装好，osascript 往 TextEdit 发 `cases.tsv` 的按键、读回比对 | 只手动（`--only mac-e2e`） | 15 分钟 |
+| `mac-e2e` | `mac/remote.sh --e2e`，装好后 `--cases` | 打包装好（已有 `/Library` 下的 pkg 版时打 pkg、停下等人用 sudo 装），切到青简，osascript 往 TextEdit 发 `cases.tsv` 的按键、读回比对；先核对装着的就是当前提交 | 只手动（`--only mac-e2e`） | 15 分钟 |
 
 `run.sh --list` 只列这次会跑哪些、为什么；`--all` 全跑（不含 `mac-e2e`）；`--only freebsd,mac` 只跑指定的。
 环境没准备好的项会跳过并说明怎么准备，不算失败。
@@ -41,7 +41,9 @@
   测试应用每次启动前全部关掉（Kate 收到 SIGTERM 不退，两秒后补 SIGKILL），Mousepad 的会话恢复关掉（被杀后会弹「是否恢复数据」抢走焦点）；
   Plasma 的会话总线不在环境变量里，`insession` 取桌面里 fcitx5 连着的那条，不能取 `/tmp` 下最新的 dbus 套接字（嵌套 sway 也会建）。
 - **Mac 测试机**：`QINGJIAN_MAC_HOST=user@host`，免密 SSH；同步到那边的 `~/work/qingjian-verify`（`QINGJIAN_MAC_DIR`），不碰手工用的目录。
-  没同意 Xcode 许可也能跑（脚本走 Command Line Tools）。`--e2e` 前提：当前输入法已是青简、sshd 有辅助功能权限；
+  没同意 Xcode 许可也能跑（脚本走 Command Line Tools）。git worktree 的 `.git` 拷过去是坏的，脚本改传 git bundle 在那边建仓库：
+  bundle.sh 的构建号是提交数，退成 1 的话 pkg 装不上（安装器不拿构建号小的覆盖已装版本，`/var/log/install.log` 里是 `Skipping component`）。
+  那台 Mac 的磁盘紧，debug 与 release 两份产物放不下，所以缺省模式只跑检查、`--e2e` 只打包。`--e2e` 前提：当前输入法已是青简、sshd 有辅助功能权限；
   它会占用那台 Mac 的键盘，并替换已装的青简，新装的要注销重登一次才出现在输入法菜单里。
 
 ## 图形端到端怎么判对错
