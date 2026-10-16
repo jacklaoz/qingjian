@@ -21,7 +21,7 @@ mac() { ssh -o BatchMode=yes -o ConnectTimeout=8 "$host" "$remote_env; $*"; }
 step "连接 $host"
 mac 'sw_vers -productVersion; uname -m' | paste -sd' ' || die "连不上 $host"
 
-step '同步工作区（带 .git：bundle.sh 要取短哈希；不碰那边的 target/ 与 data/，产品数据由 data-fetch.sh 取）'
+step '同步工作区（不碰那边的 target/ 与 data/；产品数据由 data-fetch.sh 取，git 历史经 bundle 传）'
 # .git 不直接拷：git worktree 的 .git 只是指向主仓库的文件，拷过去是坏的。改成把当前分支打成 git bundle，
 # 在那边建一个真仓库并指到同一个提交（只重置索引、不动同步过去的文件）。bundle.sh 的构建号是提交数，
 # 退成 1 的话 pkg 装不上去：安装器不拿构建号小的覆盖已装的版本（install.log 里是 Skipping component）
@@ -31,7 +31,8 @@ bundle=$(mktemp --suffix=.bundle)
 git -C "$repo_root" bundle create -q "$bundle" HEAD
 scp -q -o BatchMode=yes "$bundle" "$host:/tmp/qingjian-verify.bundle"
 rm -f "$bundle"
-mac "cd $remote_dir && { [ -d .git ] || git init -q; } && git fetch -q /tmp/qingjian-verify.bundle HEAD && git reset -q FETCH_HEAD && rm -f /tmp/qingjian-verify.bundle && echo \"那边的仓库：\$(git rev-parse --short HEAD)，\$(git rev-list --count HEAD) 个提交\""
+# 以前直接拷过 worktree 的 .git（一个指向本机路径的文件），留在那边会让 git 以为是坏仓库，先删掉
+mac "cd $remote_dir && { [ ! -f .git ] || rm .git; } && { [ -d .git ] || git init -q; } && git fetch -q /tmp/qingjian-verify.bundle HEAD && git reset -q FETCH_HEAD && rm -f /tmp/qingjian-verify.bundle && echo \"那边的仓库：\$(git rev-parse --short HEAD)，\$(git rev-list --count HEAD) 个提交\""
 
 if [[ "$mode" == check ]]; then
   step 'clippy（整个 workspace，与 Mac 上的 pre-commit 一致）'
