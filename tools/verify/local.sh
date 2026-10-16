@@ -22,13 +22,18 @@ awk '/^test result/ {p += $4; f += $6} END {print "  " p " 个测试通过，" f
 if [[ "$(uname -s)" == Linux ]]; then
   run installation python3 apps/linux/tests/installation.py
 fi
-# 截图脚本拷一份配置到输出目录，用临时的 XDG 目录，不碰本机真配置
+# 截图脚本拷一份配置到输出目录再点。--config 给一个不存在的文件让它用缺省配置：不给的话读的是本机真配置
+# （macOS / Windows 不认 XDG），结果就取决于这台机器配了什么——Mac 测试机上曾因真配置里的 traditional = "off" 整个读不进
+# 在 run 的 if 里调用，set -e 不生效，所以每一步的失败都要自己传回去
 snapshot() {
-  local home
+  local home code=0
   home=$(mktemp -d)
-  cargo build -q --locked -p qingjian-settings
-  XDG_CONFIG_HOME=$home/config XDG_DATA_HOME=$home/data target/debug/qingjian-settings --png "$verify_out/settings-png"
+  cargo build -q --locked -p qingjian-settings || return
+  rm -rf "$verify_out/settings-png"
+  XDG_CONFIG_HOME=$home/config XDG_DATA_HOME=$home/data \
+    target/debug/qingjian-settings --config "$home/none.toml" --png "$verify_out/settings-png" || code=$?
   rm -rf "$home"
+  return "$code"
 }
 run settings-png snapshot
 # 没截出图就算失败：脚本中途出错时进程照样可能退出 0（比如磁盘写满）

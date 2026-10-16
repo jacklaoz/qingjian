@@ -87,7 +87,8 @@ jobs:
         run: |
           home=$(mktemp -d)
           cargo build -q --locked -p qingjian-settings
-          XDG_CONFIG_HOME=$home/config XDG_DATA_HOME=$home/data target/debug/qingjian-settings --png target/ci-logs/settings-png
+          XDG_CONFIG_HOME=$home/config XDG_DATA_HOME=$home/data target/debug/qingjian-settings --config "$home/none.toml" --png target/ci-logs/settings-png
+          ls target/ci-logs/settings-png/*.png > /dev/null
 
       - name: Upload Linux diagnostics
         if: failure()

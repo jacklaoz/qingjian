@@ -26,6 +26,8 @@ on run argv
 						keystroke c
 						delay 0.08
 					end repeat
+					-- 停一下再按下一个键：本地模型生成的整句是异步回来的，真人打字也会停顿（与 FreeBSD 的 e2e-app.sh 一致）
+					delay 0.8
 				end if
 			end tell
 			delay 0.3

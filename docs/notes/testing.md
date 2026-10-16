@@ -43,7 +43,11 @@
 - **Mac 测试机**：`QINGJIAN_MAC_HOST=user@host`，免密 SSH；同步到那边的 `~/work/qingjian-verify`（`QINGJIAN_MAC_DIR`），不碰手工用的目录。
   没同意 Xcode 许可也能跑（脚本走 Command Line Tools）。git worktree 的 `.git` 拷过去是坏的，脚本改传 git bundle 在那边建仓库：
   bundle.sh 的构建号是提交数，退成 1 的话 pkg 装不上（安装器不拿构建号小的覆盖已装版本，`/var/log/install.log` 里是 `Skipping component`）。
-  那台 Mac 的磁盘紧，debug 与 release 两份产物放不下，所以缺省模式只跑检查、`--e2e` 只打包。`--e2e` 前提：当前输入法已是青简、sshd 有辅助功能权限；
+  那台 Mac 的磁盘紧，debug 与 release 两份产物放不下，所以缺省模式只跑检查、`--e2e` 只打包。
+  那台 Mac 是日常用的：`--cases` 先把 `~/Library/Application Support/Qingjian` 整个挪开、输入法以全新状态（缺省配置、没有学习数据）跑，
+  跑完强制结束输入法（不让它把测试期间学到的写回去）再原样挪回，中途出错也会挪回；前后对过校验值，一个字节不差。
+  输入法进程被结束后菜单里会暂时没有它，脚本用 `qingjian-macos --register` 重新启用，再等日志里出现「本地模型已加载并预热」才开始。
+  排查时 `QINGJIAN_CASES=文件` 换用例、`QINGJIAN_MAC_DEBUG=1` 让输入法打调试日志并取回 `target/verify/mac-ime.log`。`--e2e` 前提：当前输入法已是青简、sshd 有辅助功能权限；
   它会占用那台 Mac 的键盘，并替换已装的青简，新装的要注销重登一次才出现在输入法菜单里。
 
 ## 图形端到端怎么判对错
