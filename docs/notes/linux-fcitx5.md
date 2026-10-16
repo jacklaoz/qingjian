@@ -94,7 +94,9 @@ ImageMagick；不要把 1024px 源图塞进尺寸目录，也不要只装 `resou
 - 真实桌面（2026-09-22，本地整句模型）：CachyOS，niri（原生 Wayland），Fcitx5 5.1.22，Microsoft Edge（Chromium，`--enable-wayland-ime`）与 Konsole（Qt6）：停顿后整句候选按模型换序。
 - 真实桌面（2026-10-16，FreeBSD）：FreeBSD 15.1-RELEASE-p5，XFCE 4.20（X11），Fcitx5 5.1.21，Mousepad（GTK3）：源码安装（`install.sh` + `data-fetch.sh`）、
   正式词库与含章·通变加载、候选与整句上屏、设置程序；QEMU/KVM 虚拟机里验的，`cargo test`（925 个）与插件 ctest（48 个）在 FreeBSD 上全过。
-- 未验证：KDE 与其他桌面、其他发行版、Qt5 应用；FreeBSD 上的 Qt 应用、Firefox 与 Wayland 会话。
+  同一台虚拟机上还验了：XFCE 里的 FeatherPad、Kate（Qt6）与 Firefox 158；KDE Plasma 6.7 的 X11 会话里的 Kate 与 Firefox；
+  嵌套在 X11 里的 sway 1.12（Wayland，input-method-v2 / text-input-v3）里原生 Wayland 的 Mousepad、Kate 与 Firefox。
+- 未验证：其他发行版、Qt5 应用；FreeBSD 上完整的 KDE Plasma Wayland 会话（要真机，见下）。
 
 ## PR #351 回归验证
 
@@ -113,3 +115,7 @@ Server、插件、设置程序与 Linux 共用一份代码，差异只有几处�
   一次性回调用 `std::exchange` 取走而不是 `std::move`——libc++ 不保证移走后的 `std::function` 为空，回调会被反复触发。
 - LightDM 会话的 `XDG_RUNTIME_DIR` 是 `/var/run/xdg/<用户>`；从 ssh 起 Server 时要带同一个值，否则插件与 Server 找的不是同一个 socket。
 - 改 `~/.config/fcitx5/profile` 要先停 Fcitx5 再写：它退出时会把内存里的输入法列表存回去，覆盖掉刚写的。
+- 虚拟机里没有 `/dev/dri`（drm-kmod 只有 Intel / AMD / Radeon），整机的 Wayland 会话起不来，只能在 X11 里嵌套合成器验。
+  嵌套的 KWin（X11 窗口后端）建立了输入法上下文、Fcitx5 也申请了截取键盘，但按键始终直接交给应用、不进输入法，
+  所以 Plasma Wayland 要在真机上验；嵌套 sway 没有这个问题。嵌套时给合成器单独开 `dbus-run-session`，否则和外层会话抢 `org.kde.KWin` 等名字。
+- FreeBSD 的 Plasma X11 会话里，会话总线走 X11 autolaunch，进程环境里没有 `DBUS_SESSION_BUS_ADDRESS`；`fcitx5-remote` 因此会直接崩，应用与 Fcitx5 不受影响。

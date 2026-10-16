@@ -6,7 +6,7 @@ description: 在 Linux（以及 FreeBSD）上安装青简，使用 Fcitx4 或 Fc
 
 青简 Linux 使用系统默认候选面板。Fcitx5 提供 Ubuntu 26.04 预编译包和源码安装；Fcitx4 提供 Ubuntu 22.04 源码安装。
 Fcitx5 已验证 Ubuntu 26.04 的 GNOME 桌面（Wayland）上 GTK4、Qt6 应用与 Firefox；Fcitx4 已验证 Ubuntu 22.04 的 GTK3 文本框输入，以及 X11 下 Chrome 输入框的选中文字翻译与替换。
-FreeBSD 15.1 的 XFCE 桌面（X11）上用 Fcitx5 源码安装也验证过 GTK3 应用里的输入。
+FreeBSD 15.1 上用 Fcitx5 源码安装验证过 XFCE 与 KDE Plasma 的 X11 会话里的 GTK3、Qt6 应用和 Firefox，以及 Wayland 应用（sway 下）；KDE Plasma 的 Wayland 会话尚未验证。
 当前支持本地候选、学习、本地整句模型重排和可选云联想，提供青简设置程序，暂不自动启动。
 
 ## Ubuntu 22.04：Fcitx4 源码安装
