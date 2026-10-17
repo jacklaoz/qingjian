@@ -22,7 +22,7 @@ matrix=("$@")
 
 vm_running || die '虚拟机没在运行：tools/verify/freebsd/vm.sh start'
 vm_ssh 'test -x ~/.local/bin/qingjian-linux-server' || die '虚拟机里还没装青简：先跑 tools/verify/freebsd/check.sh'
-vm_rsync "$here/guest/" "$vm_user@127.0.0.1:bin/"
+vm_rsync "$here/guest/" "$here/../guest/" "$vm_user@127.0.0.1:bin/"
 vm_rsync "$here/../cases.tsv" "$vm_user@127.0.0.1:bin/cases.tsv"
 
 current_session=
@@ -52,40 +52,14 @@ for entry in "${matrix[@]}"; do
   step "$env · $app"
   result=$(vm_ssh "~/bin/insession ~/bin/e2e-app.sh $mode $app ~/bin/cases.tsv" 2>&1) || status=1
   vm_shot "$out/$env-$app.png"
-  while IFS=$'\x1f' read -r verdict keys expected actual; do
-    [[ "$verdict" == PASS || "$verdict" == FAIL || "$verdict" == FLAKY ]] || continue
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$env" "$app" "$verdict" "$keys" "$expected" "$actual" >> "$out/results.tsv"
-    case "$verdict" in
-      PASS) ok "$keys → ${actual:-（空）}" ;;
-      FLAKY) printf '\033[33m不稳定\033[0m %s：重试才过，%s\n' "$keys" "$actual" ;;
-      *) fail "$keys：期望「$expected」，实际「$actual」" ;;
-    esac
-  done <<< "$result"
-  [[ "$result" == *PASS* || "$result" == *FAIL* || "$result" == *FLAKY* ]] || { fail "$env · $app 没跑出结果：$result"; status=1; }
+  e2e_collect "$env" "$app" "$result" "$out/results.tsv" || status=1
   vm_ssh "pkill -x $app; sleep 2; pkill -KILL -x $app" || true
 done
 $nested && vm_ssh '~/bin/insession ~/bin/nested-sway.sh stop' || true
 # 回到缺省的 XFCE，下次手工上去看是熟悉的样子
 [[ "$current_session" == xfce ]] || vm_ssh root@ "sh /home/$vm_user/bin/session.sh xfce" >/dev/null || true
 
-{
-  echo '# FreeBSD 图形端到端'
-  echo
-  echo "$(date '+%F %T')，$(git -C "$repo_root" rev-parse --short HEAD)$(git -C "$repo_root" diff --quiet || echo +)，用例 tools/verify/cases.tsv"
-  echo
-  echo '| 环境 | 应用 | 通过 | 重试才过 | 失败 |'
-  echo '|---|---|---|---|---|'
-  awk -F'\t' 'NR > 1 {k = $1 " | " $2; total[k]; if ($3 == "PASS") p[k]++; else if ($3 == "FLAKY") r[k]++; else f[k]++}
-    END {for (k in total) printf "| %s | %d | %d | %d |\n", k, p[k], r[k], f[k]}' "$out/results.tsv" | sort
-  if grep -q $'\tFAIL\t' "$out/results.tsv"; then
-    echo; echo '## 失败的用例'; echo
-    awk -F'\t' '$3 == "FAIL" {printf "- %s · %s：`%s` 期望「%s」，实际「%s」\n", $1, $2, $4, $5, $6}' "$out/results.tsv"
-  fi
-  if grep -q $'\tFLAKY\t' "$out/results.tsv"; then
-    echo; echo '## 重试才过的用例（多半是机器忙时丢键，连着出现要查）'; echo
-    awk -F'\t' '$3 == "FLAKY" {printf "- %s · %s：`%s` %s\n", $1, $2, $4, $6}' "$out/results.tsv"
-  fi
-} > "$out/summary.md"
+e2e_summary "FreeBSD 图形端到端" "$out/results.tsv" > "$out/summary.md"
 step '汇总'
 cat "$out/summary.md"
 echo "截图与逐条结果：$out"

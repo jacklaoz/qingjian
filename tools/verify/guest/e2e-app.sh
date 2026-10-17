@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # //! 对一个应用逐条跑端到端用例：清空 → 剪贴板放哨兵 → 切青简 → 按记号发键 → 全选复制 → 读回比对。
-# //! 经 insession 以普通用户跑；输出一行一个用例：PASS/FAIL、按键、期望、实际，用 \x1f 分隔（制表符分隔时空的期望值会被 read 吞掉）。
+# //! FreeBSD 与 Linux 虚拟机共用，经各自的 insession 以普通用户跑；输出一行一个用例：PASS/FAIL、按键、期望、实际，用 \x1f 分隔（制表符分隔时空的期望值会被 read 吞掉）。
 # //! 应用跑完不关，留给宿主截屏。
 # 用法：insession e2e-app.sh x11|wayland mousepad|featherpad|kate|firefox 用例文件
 set -uo pipefail
@@ -31,20 +31,26 @@ case "$app" in
   firefox)
     profile=/tmp/qingjian-firefox-$mode
     rm -rf "$profile" && mkdir -p "$profile"
-    launch=(firefox --new-instance --profile "$profile" "file://$HOME/input-test.html"); class=firefox; app_id=firefox ;;
+    browser=firefox; command -v firefox >/dev/null || browser=firefox-esr
+    launch=("$browser" --new-instance --profile "$profile" "file://$HOME/input-test.html"); class=firefox; app_id=firefox ;;
   *) echo "不认识的应用：$app" >&2; exit 2 ;;
 esac
 
 # 所有测试用的应用都先关掉，不只是这一个：上一个没清理干净的话（比如宿主那头 ssh 断了），
 # 窗口叠在一起，点击落到别的窗口上，后面全都切不到青简。Kate 收到 SIGTERM 不退，两秒后补 SIGKILL
-apps=(mousepad featherpad kate firefox)
+apps=(mousepad featherpad kate firefox firefox-esr)
 for running in "${apps[@]}"; do pkill -x "$running" 2>/dev/null; done
 sleep 2
 for running in "${apps[@]}"; do pkill -KILL -x "$running" 2>/dev/null; done
 # 被杀掉的 Mousepad 下次启动会弹「是否恢复数据」，焦点落在对话框上就没有输入框
 gsettings set org.xfce.mousepad.preferences.file session-restore never 2>/dev/null
 sleep 1
-daemon -f -o "/tmp/qingjian-e2e-$mode-$app.log" "${launch[@]}"
+# 脱离 ssh 会话在后台起应用：FreeBSD 用 daemon(8)，Linux 用 setsid
+if [[ "$(uname -s)" == FreeBSD ]]; then
+  daemon -f -o "/tmp/qingjian-e2e-$mode-$app.log" "${launch[@]}"
+else
+  setsid "${launch[@]}" </dev/null >"/tmp/qingjian-e2e-$mode-$app.log" 2>&1 &
+fi
 
 # 等窗口出来并把键盘焦点给它（Firefox 第一次起新配置要二三十秒）
 window=

@@ -15,7 +15,7 @@ ok "$(echo "$packages" | wc -w | tr -d ' ') 个包"
 
 step '推送虚拟机里用的脚本到 ~/bin'
 vm_ssh 'mkdir -p ~/bin'
-vm_rsync "$here/guest/" "$vm_user@127.0.0.1:bin/"
+vm_rsync "$here/guest/" "$here/../guest/" "$vm_user@127.0.0.1:bin/"
 
 step '桌面配置（LightDM 自动登录 XFCE、Fcitx5 与青简 Server 随登录启动）'
 # 先停桌面：Fcitx5 退出时会把内存里的输入法列表写回 profile，开着写会被覆盖
