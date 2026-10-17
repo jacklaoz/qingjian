@@ -2,7 +2,7 @@
 
 use super::alignment::Alignment;
 use super::annotation::AnnotationReport;
-use super::input_log::{InputLogEntry, InputLogger, InputSource};
+use super::input_log::InputSource;
 use super::learning::Learner;
 use super::query::EnglishTail;
 use super::{
@@ -17,6 +17,7 @@ use std::time::Instant;
 
 mod chain;
 mod last;
+mod retraction;
 mod transition;
 
 pub(super) use chain::CommitChain;
@@ -385,64 +386,6 @@ impl Engine {
         ))
     }
 
-    /// 最近删掉的上屏里有一次是同一段拼音（或它的前缀）、这次却选了别的词：把那次记的学习退回去。
-    /// 删掉几个词再从头重打是常事（「沃德 书」删掉重打成「我的 书」），所以往前找最近一次删干净的同段拼音；
-    /// 重打后选的还是同一个词就不算选错，只把那条记录丢掉。这次的拼音与删掉的哪次都对不上时，删掉的那些当作在改别处，全忘掉。
-    pub(super) fn apply_retraction(&mut self, input: &str, text: &str) {
-        let Some(index) = self
-            .recent_commits
-            .iter()
-            .rposition(|c| c.is_erased() && c.same_input(input))
-        else {
-            // 删掉的那次拼音与这次相近但不同（wode 删了重打 wodi）：重打了键，记进输入日志给敲错纠正当样本；学习不动
-            if let Some(erased) = self
-                .recent_commits
-                .iter()
-                .rev()
-                .find(|c| c.is_erased() && is_retyped(&c.input, input))
-            {
-                self.logger.record(InputLogEntry::Retype {
-                    before: erased.input.clone(),
-                    after: input.to_owned(),
-                    of: erased.log_id,
-                });
-            }
-            self.recent_commits.retain(|c| !c.is_erased());
-            return;
-        };
-        let last = self.recent_commits.remove(index);
-        if last.text == text {
-            return;
-        }
-        tracing::debug!(retracted = %last.text, chosen = %text, "上次选错了，撤销它的学习");
-        self.logger.record(InputLogEntry::Retract {
-            of: last.log_id,
-            text: last.text.clone(),
-            chosen: text.to_owned(),
-        });
-        if let Some(chosen) = &last.chosen {
-            self.learner.unrecord(chosen);
-        }
-        if let Some(choice) = &last.choice {
-            self.learner
-                .unrecord_choice(&last.input, &choice.reading, &choice.text);
-        }
-        for transition in &last.transitions {
-            self.learner.unrecord_transition(
-                transition.context(),
-                &transition.word,
-                transition.times,
-            );
-        }
-        for (typed, intended) in &last.typos {
-            self.learner.unrecord_typo(typed, intended);
-        }
-        if let Some((key, choice)) = &last.phrase {
-            self.learner
-                .unrecord_choice(key, &choice.reading, &choice.text);
-        }
-    }
-
     /// 这个候选上屏算接受了哪些音节级敲错：词图里靠敲错变体对上的音节，加上整段纠错落在的那个音节（吃到了编辑处才算）。
     /// 双拼不记（键与全拼对不上）。
     pub(super) fn accepted_typos(&self, candidate: &Candidate) -> Vec<(String, String)> {
@@ -733,38 +676,4 @@ impl Engine {
 /// 整句路径上的词是英文词（`woxiangxuehaorust` 的 rust）：不是占位音节、全是字母。
 fn is_english_word(word: &sentence::SentenceWord) -> bool {
     !word.placeholder && !word.text.is_empty() && word.text.bytes().all(|b| b.is_ascii_alphabetic())
-}
-
-/// 删掉重打的键串算不算「同一段拼音打错了」：都够长、不相等、编辑距离不超过 [`RETYPE_MAX_EDITS`]。
-/// 差得更多的是在改别的内容，不算。
-fn is_retyped(before: &str, after: &str) -> bool {
-    before.len() >= RETYPE_MIN_LETTERS
-        && after.len() >= RETYPE_MIN_LETTERS
-        && before != after
-        && edit_distance(before, after) <= RETYPE_MAX_EDITS
-}
-
-/// 跨上屏重打的键串最少几个字母才算数。
-const RETYPE_MIN_LETTERS: usize = 3;
-
-/// 跨上屏重打最多差几处编辑。
-const RETYPE_MAX_EDITS: usize = 2;
-
-/// Levenshtein 编辑距离（按字节，键串都是 ASCII）。
-fn edit_distance(a: &str, b: &str) -> usize {
-    let a = a.as_bytes();
-    let b = b.as_bytes();
-    let mut previous: Vec<usize> = (0..=b.len()).collect();
-    let mut current = vec![0; b.len() + 1];
-    for (i, &ca) in a.iter().enumerate() {
-        current[0] = i + 1;
-        for (j, &cb) in b.iter().enumerate() {
-            let cost = usize::from(ca != cb);
-            current[j + 1] = (previous[j] + cost)
-                .min(previous[j + 1] + 1)
-                .min(current[j] + 1);
-        }
-        std::mem::swap(&mut previous, &mut current);
-    }
-    previous[b.len()]
 }

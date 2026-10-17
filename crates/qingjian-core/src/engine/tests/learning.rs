@@ -31,11 +31,12 @@ fn erasing_the_last_commit_and_choosing_another_word_retracts_its_learning() {
     engine.note_backspace();
     pick(&mut engine, "kaifa", "开发");
     assert_eq!(engine.learner().weight("开放"), 1);
-    // 整个删掉之后打的是别的拼音：不撤销
+    // 整个删掉之后打的是别的拼音：删掉的词没留在文本里，学习一样退回去，但不记 retract
     engine.note_backspace();
     engine.note_backspace();
     pick(&mut engine, "xian", "先");
-    assert_eq!(engine.learner().weight("开发"), 2);
+    assert_eq!(engine.learner().weight("开发"), 1);
+    assert_eq!(engine.learner().weight("先"), 1);
     // 删得比记着的几次上屏加起来（开放 先 开放 开发，7 个字）还多：在改别处，不撤销
     pick(&mut engine, "kaifa", "开放");
     for _ in 0..8 {
@@ -43,6 +44,49 @@ fn erasing_the_last_commit_and_choosing_another_word_retracts_its_learning() {
     }
     pick(&mut engine, "kaifa", "开发");
     assert_eq!(engine.learner().weight("开放"), 2);
+}
+
+#[test]
+fn an_erased_word_followed_by_other_input_is_unlearned_without_a_retract() {
+    // 本机日志：tui 空格上屏 腿、删掉，改打 push 或 tuisong——腿 每次都记一笔，累计到排在 推 前面
+    let dictionary =
+        Dictionary::parse("腿\ttui\t5000\n推\ttui\t3000\n推送\ttui song\t3000\n").unwrap();
+    let entries = Arc::new(Mutex::new(Vec::new()));
+    let mut engine = Engine::new(dictionary)
+        .with_learner(Box::new(CountingLearner(HashMap::new())))
+        .with_input_logger(Box::new(MemoryLogger(entries.clone())));
+    let pick = |engine: &mut Engine, input: &str, text: &str| {
+        engine.set_input(input);
+        let candidate = engine
+            .query()
+            .unwrap()
+            .candidates
+            .items
+            .into_iter()
+            .find(|c| c.text == text && c.kind == CandidateKind::Chinese)
+            .unwrap();
+        engine.commit(&candidate);
+    };
+    pick(&mut engine, "tui", "腿");
+    engine.note_backspace();
+    pick(&mut engine, "tuisong", "推送");
+    assert_eq!(engine.learner().weight("腿"), 0);
+    assert_eq!(engine.learner().choice_weight("tui", "腿"), 0);
+    assert_eq!(engine.learner().weight("推送"), 1);
+    assert!(
+        !entries
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, InputLogEntry::Retract { .. })),
+        "换了拼音不是「同一段拼音该选这个」"
+    );
+    // 删掉之后用别的拼音打出同一个词：词没错，不退
+    pick(&mut engine, "tuisong", "推送");
+    engine.note_backspace();
+    engine.note_backspace();
+    pick(&mut engine, "tuis", "推送");
+    assert_eq!(engine.learner().weight("推送"), 3);
 }
 
 #[test]

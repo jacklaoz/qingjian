@@ -145,7 +145,7 @@ commit(candidate)
  │    Emoji / Kaomoji / Symbol  按对应词的音节吃拼音，不学习
  │    Generated                 模型直接生成的整句，没有音节对齐，吃掉整段作用域，不学习
  │    Shortcut / Custom         不学习
- ├─ apply_retraction           删光重打换了个词：上一次记的词频、选择、转移、敲错全部退回
+ ├─ apply_retraction           删光的上屏后面打了别的词：那次记的词频、选择、转移、敲错全部退回（commit/retraction.rs）
  ├─ record_typo                接受的 (敲的, 要的) 音节对 ──► user-typos.tsv
  ├─ log_commit                 input-log.jsonl 一行（键按原样记，辅码态把触发键与码段接在后面）
  ├─ meter_commit               汉字 / 词数、首选、键数与打字时长 ──► usage-hourly.tsv
@@ -163,7 +163,7 @@ commit(candidate)
   判定在壳：Windows 看 TSF 的输入范围，Linux 看前端报来的能力位（密码 / 敏感）；
   macOS 在 Secure Input 下不组句，所以壳不调 `set_private`，只额外挡掉云联想、神经重排的前文与翻译快捷键。
 - **退格撤销**：`recent_commits` 留最近 4 次上屏，壳把组句外的退格用 `note_backspace()` 告诉 Engine，
-  删光再重打同一段拼音换了个词，就走上面的 `apply_retraction`。**目前只有 macOS 调了 `note_backspace`**，
+  删光后再上屏别的词，就走上面的 `apply_retraction`（同一段拼音换了个词另记一条 `retract`）。**目前只有 macOS 调了 `note_backspace`**，
   Windows 与 Linux 的 Server 都没调，这两个平台上撤销不会发生。
 
 ## 五、缓存与内部可变状态
