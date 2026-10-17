@@ -163,8 +163,8 @@ commit(candidate)
   判定在壳：Windows 看 TSF 的输入范围，Linux 看前端报来的能力位（密码 / 敏感）；
   macOS 在 Secure Input 下不组句，所以壳不调 `set_private`，只额外挡掉云联想、神经重排的前文与翻译快捷键。
 - **退格撤销**：`recent_commits` 留最近 4 次上屏，壳把组句外的退格用 `note_backspace()` 告诉 Engine，
-  删光再重打同一段拼音换了个词，就走上面的 `apply_retraction`。**目前只有 macOS 调了 `note_backspace`**，
-  Windows 与 Linux 的 Server 都没调，这两个平台上撤销不会发生。
+  删光再重打同一段拼音换了个词，就走上面的 `apply_retraction`。macOS 与 Linux Server 调了 `note_backspace`（按词删调 `break_chain`），
+  **Windows Server 还没调**，那里撤销不会发生（见 `docs/plan/todo.md`）。
 
 ## 五、缓存与内部可变状态
 
@@ -250,7 +250,7 @@ Linux 在 `apps/linux/server/src/protocol/` 另有一套 JSON 消息，候选连
    | 五笔（`set_code_table`） | ✓ | ✓ | — |
    | 辅码（`set_aux_codes`） | — | ✓ | — |
    | 繁体（`set_traditional_mode`） | ✓ | ✓ | — |
-   | 退格撤销（`note_backspace`） | ✓ | — | — |
+   | 退格撤销（`note_backspace`） | ✓ | — | ✓ |
    | 符号面板（`open_symbol_panel`） | ✓ | ✓ | — |
    | 中西文自动空格（`set_auto_space`） | ✓ | — | — |
    | 多会话（`swap_session`） | — | — | ✓ |
