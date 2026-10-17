@@ -19,9 +19,9 @@ AppImage 的思路是程序留在包里、运行时挂载，什么都不装。�
 | `~/.config/autostart/qingjian-server.desktop` | 登录时 `"<AppImage 路径>" server`；XDG 自启，各桌面都认，不依赖 systemd 用户会话 |
 | `~/.local/share/applications/qingjian-settings.desktop` | 菜单里的「青简设置」，`"<AppImage 路径>" settings` |
 
-另拷 hicolor 图标（同名的已经在就不动）。装完立刻在后台起 Server，不用重新登录。
+另拷 hicolor 图标（同名的已经在、又不是上次自己装的就不动）。装完立刻在后台起 Server，等它的进程真出现了才返回（不等的话紧接着的 `uninstall` 会漏停它），不用重新登录。
 
-- **挪动 AppImage 文件后要再 `install` 一次**：自启项与菜单项写的是它的绝对路径。
+- **挪动 AppImage 文件后要再 `install` 一次**：自启项与菜单项写的是它的绝对路径。重装时上次记下的文件（含图标）仍算自己的，照样覆盖并记下，否则卸载会把图标留下、之后的源码安装拒绝覆盖（虚拟机实测抓到的）。
 - **同一路径换成新版本**：`server` 每次启动先比对包里的插件与拷出去的那份，不同就换掉，并提示重启 Fcitx5。
 - **与其他装法共存**：上面几个文件第一行写着标记；同名文件没有标记（源码安装、发行包装的）就拒装，并提示先卸载那一份。
   只认「exe 旁边有 `AppRun`」的 Server 进程才会被停，源码装的那份不碰。
@@ -54,7 +54,9 @@ squashfs 由 `mksquashfs`（zstd）直接打，再接在 runtime 后面，不依
 3. 确认 `install` 起了 Server，停掉后**照自启项的 `Exec=` 原样再起一次**（引号与转义错了登录时就起不来）；
 4. Xvfb + `dbus-run-session` 里起 Fcitx5（profile 里只放键盘与青简）、开 Mousepad，xdotool 打字，全选复制读剪贴板比对；
 5. 设置程序 `--png` 截图（只验能从 AppImage 起来、画得出页面）；
-6. `uninstall`，确认文件删了、Server 停了、用户数据还在。
+6. 重装一次再 `uninstall`，确认文件（含图标）删了、Server 停了、用户数据还在。
+
+真桌面的整套场景（重启后靠登录自启打字、插件同步、卸载后再重启）由 `tools/verify/linux/appimage.sh` 在 Linux 虚拟机里跑，见 [testing.md](testing.md)。
 
 拒装的两组（Ubuntu 24.04、22.04）只验提示对不对。
 

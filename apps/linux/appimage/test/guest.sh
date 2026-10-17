@@ -148,8 +148,10 @@ else
   fail "设置程序一张图都没画出来：$(tail -3 /tmp/settings.log)"
 fi
 
+# 重装一次（挪了文件、换了版本时就是这样）：上次装的图标仍要算自己的，否则卸载会把它们留下，之后的源码安装拒绝覆盖
+out=$("$app" install 2>&1) && pass "重装" || fail "重装：$out"
 out=$("$app" uninstall 2>&1) && pass "uninstall" || fail "uninstall：$out"
-for file in "$addon" "$autostart" "$desktop" "$library.so"; do
+for file in "$addon" "$autostart" "$desktop" "$library.so" "$data/icons/hicolor/48x48/apps/qingjian.png"; do
   [[ ! -e "$file" ]] || fail "卸载后还在：$file"
 done
 server_exe >/dev/null && fail "卸载后 Server 还在跑：$(server_exe)" || pass "卸载后 Server 停了、文件删了"

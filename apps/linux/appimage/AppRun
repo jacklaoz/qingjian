@@ -63,6 +63,12 @@ start_server() {
   else
     nohup "$self" server </dev/null >/dev/null 2>&1 &
   fi
+  # 等它真的起来再返回：AppImage 要先挂载，紧接着的 uninstall 要是还看不到它，就会漏停
+  for _ in $(seq 25); do
+    [ -n "$(appimage_servers)" ] && return 0
+    sleep 0.2
+  done
+  printf '%s\n' '青简输入服务没起来，可以手动运行一次看报错：AppImage 文件后面加 server' >&2
 }
 
 # 这份文件是不是我们写的（没有就当是）；别的装法（源码安装、发行包）写的同名文件不覆盖
@@ -123,12 +129,16 @@ Exec=$exec_line server
 NoDisplay=true
 X-GNOME-Autostart-enabled=true
 EOF
+  # 重装（挪了文件、换了版本）时，上次记下的文件仍归我们：先留着旧记录，图标那里要靠它判断
+  previous=$(cat "$record" 2>/dev/null || true)
   : > "$record"
   for file in "$plugin" "$addon" "$inputmethod" "$desktop" "$autostart"; do say "$file" >> "$record"; done
-  # 图标：同名的已经在（别的装法装过）就不动，只记自己装的
+  # 图标：同名的已经在、又不是上次自己装的（别的装法装过）就不动，只记自己装的
   for icon in "$usr"/share/icons/hicolor/*/apps/*.png; do
     target="$data_home/icons/hicolor/${icon#"$usr"/share/icons/hicolor/}"
-    [ -e "$target" ] && continue
+    if [ -e "$target" ] && ! printf '%s\n' "$previous" | grep -qxF "$target"; then
+      continue
+    fi
     mkdir -p "${target%/*}"
     cp "$icon" "$target"
     say "$target" >> "$record"
