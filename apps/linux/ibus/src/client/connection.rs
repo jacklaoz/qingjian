@@ -115,7 +115,16 @@ impl Connection {
         event: KeyEvent,
         release: bool,
     ) -> Result<Reply, IbusError> {
-        self.event(session, LinuxEvent::Key { event, release })
+        // IBus 这边还没接光标前后文与读选区：不给前后文，Server 就不带它发云联想，也不会对选区翻译键要选区
+        self.event(
+            session,
+            LinuxEvent::Key {
+                event,
+                release,
+                surrounding: None,
+                selection_supported: false,
+            },
+        )
     }
 
     /// 报一次焦点进出。

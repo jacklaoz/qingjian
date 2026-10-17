@@ -56,4 +56,21 @@ with tempfile.TemporaryDirectory(prefix='qingjian-install-') as temporary:
     assert not desktop.exists() and not (prefix / 'bin/qingjian-settings').exists()
     assert user.read_text() == '学习数据' and other.read_text() == '其他输入法'
     assert modified.read_text() == '用户修改过的样例'
+    fcitx4_prefix = directory / 'fcitx4 prefix'
+    config = directory / 'user config'
+    fcitx4_env = dict(env, XDG_CONFIG_HOME=str(config))
+    fcitx4_args = ['python3', str(helper), 'install', str(fcitx4_prefix), '--root', str(root),
+                   '--server', str(server), '--settings', str(settings), '--fcitx4-plugin', str(plugin), '--sample']
+    subprocess.run(fcitx4_args, env=fcitx4_env, check=True)
+    subprocess.run(fcitx4_args, env=fcitx4_env, check=True)
+    fcitx4_addon = config / 'fcitx/addon/fcitx-qingjian.conf'
+    assert f'Library={fcitx4_prefix}/lib/fcitx/fcitx-qingjian.so\n' in fcitx4_addon.read_text()
+    assert (fcitx4_prefix / 'lib/fcitx/fcitx-qingjian.so').read_bytes() == plugin.read_bytes()
+    imicon = config / 'fcitx/imicon/qingjian.png'
+    tray_icon = data / 'icons/hicolor/48x48/apps/fcitx-qingjian.png'
+    assert imicon.read_bytes() == tray_icon.read_bytes() == (root / 'assets/icon/fcitx4.png').read_bytes()
+    subprocess.run(['python3', str(helper), 'uninstall', str(fcitx4_prefix)],
+                   env=fcitx4_env, check=True)
+    assert not fcitx4_addon.exists()
+    assert not imicon.exists() and not tray_icon.exists()
 print('用户目录安装、重复安装、注册路径和卸载保留测试通过')

@@ -51,6 +51,17 @@ impl Default for ShortcutConfig {
         let (translation, translation_second) = (Modifiers::CONTROL, Modifiers::SHIFT_CONTROL);
         #[cfg(not(windows))]
         let (translation, translation_second) = (Modifiers::OPTION, Modifiers::SHIFT_OPTION);
+        #[cfg(not(any(windows, target_os = "macos")))]
+        let translate_selection = KeyCombo {
+            modifiers: Modifiers {
+                option: true,
+                shift: true,
+                ..Modifiers::default()
+            },
+            key: 't',
+        };
+        #[cfg(any(windows, target_os = "macos"))]
+        let translate_selection = KeyCombo::TRANSLATE_DEFAULT;
         Self {
             mode: ModeKeys::default(),
             switch_mode: SwitchKeys::default(),
@@ -59,7 +70,7 @@ impl Default for ShortcutConfig {
             extra_page_keys: PageKeys::default(),
             translation,
             translation_second,
-            translate_selection: KeyCombo::TRANSLATE_DEFAULT,
+            translate_selection,
             predict: KeyCombo::PREDICT_DEFAULT,
             delete_candidate: Modifiers::SHIFT,
         }

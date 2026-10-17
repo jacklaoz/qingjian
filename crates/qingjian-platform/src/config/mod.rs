@@ -181,6 +181,24 @@ delete_candidate = "shift"
     };
 }
 
+/// Linux 与 FreeBSD 默认避开桌面常用的 Ctrl + Alt + T（打开终端）。
+#[cfg(not(any(windows, target_os = "macos")))]
+macro_rules! template_shortcut_keys {
+    () => {
+        r#"# 中 / 英模式切换键：shift 单击（缺省），[] 不用键切换。
+switch_mode = ["shift"]
+# 数字键配这些修饰键上屏候选的译词：translation 第一个译词，translation_second 第二个
+# 不少窗口管理器把 Alt+数字占去切工作区了，被占了就改成别的组合，例如 translation = "ctrl+alt"
+translation = "alt"
+translation_second = "shift+alt"
+# 把应用里选中的文字译成学习语言（要开着云服务）；Ctrl + Alt + T 常被桌面占用来打开终端
+translate_selection = "alt+shift+t"
+# 数字键配这些修饰键删掉候选
+delete_candidate = "shift"
+"#
+    };
+}
+
 /// 模板 `[shortcut]` 一节里的修饰键组合（Windows 键名：alt / ctrl / win，读回来与 macOS 的 option / control / command 等价）。
 #[cfg(windows)]
 macro_rules! template_shortcut_keys {
@@ -196,24 +214,6 @@ translation_second = "shift+ctrl"
 translate_selection = "ctrl+alt+t"
 # Windows 组句中按需调用 AI
 predict = "ctrl+alt+j"
-# 数字键配这些修饰键删掉候选：用户词（云端选过的、自动造的）整个删掉，词库里的词清掉对它的学习记录。组句中要打感叹号先把词上屏
-delete_candidate = "shift"
-"#
-    };
-}
-
-/// 模板 `[shortcut]` 一节里的修饰键组合（Linux）：配置仍按 macOS 命名写（option 落到 Alt、command 落到 Super），
-/// 缺省值与 macOS 一份。注释按 Linux 的键名，并提醒 Alt+数字常被窗口管理器占去切工作区。
-#[cfg(not(any(windows, target_os = "macos")))]
-macro_rules! template_shortcut_keys {
-    () => {
-        r#"# 数字键配这些修饰键上屏候选的译词：translation 第一个译词，translation_second 第二个（候选右侧有两个译词时）
-# 任意修饰键组合（option / shift / control / command 用 + 连；在 Linux 上 option 是 Alt、command 是 Super）
-# 不少窗口管理器把 Alt+数字占去切工作区了，被占了就改成别的组合，例如 translation = "control+option"
-translation = "option"
-translation_second = "shift+option"
-# 把应用里选中的文字译成学习语言（要开着云服务）：Linux 上还没接
-translate_selection = "control+option+t"
 # 数字键配这些修饰键删掉候选：用户词（云端选过的、自动造的）整个删掉，词库里的词清掉对它的学习记录。组句中要打感叹号先把词上屏
 delete_candidate = "shift"
 "#
@@ -295,9 +295,9 @@ aux_code_key = ";"
 aux_code_show = false
 # 码段删空后是否留在辅码状态：true 删空后 ; 仍在、候选全部回来，再按一次退格才退出辅码；false 删空即回拼音状态
 aux_code_keep_empty = true
-# 拼音方案：留空或 pinyin 为全拼 / xiaohe 小鹤双拼 / ziranma 自然码 / microsoft 微软双拼 / sogou 搜狗双拼 / abc 智能ABC / xiaolang 小浪双拼 / shoudao 首道双拼 / jiajia 拼音加加 /
+# 拼音方案：留空或 pinyin 为全拼 / xiaohe 小鹤双拼 / ziranma 自然码 / microsoft 微软双拼 / sogou 搜狗双拼 / abc 智能ABC / xiaolang 小浪双拼 / shoudao 首道双拼 / jiajia 拼音加加 / ziguang 紫光双拼 /
 # zhuyin 大千注音 / none 关（只用形码，见下面的 wubi）。
-# 双拼与注音下 v / u / i 都是按键，表达式模式没有入口，问字只能靠 question_mark 打开后用 ? 进；微软、搜狗方案的 ; 键是 ing
+# 双拼与注音下 v / u / i 都是按键，表达式模式没有入口，问字只能靠 question_mark 打开后用 ? 进；微软、搜狗、紫光方案的 ; 键是 ing
 scheme = ""
 # 双拼方案下 preedit 显示原始按键（如 ljse）还是展开成全拼（lan'se）；缺省 false（展开成全拼）
 shuangpin_raw_preedit = false
@@ -403,6 +403,8 @@ slots = 2
 sentence = true
 # 本地整句候选右侧是否显示服务返回的译文；仅发送该候选文本，不发送光标前后上下文
 sentence_translation = false
+# 上屏的整句（含分几次打完的一句）翻成学习语言，记进生词本的时间线；只发那一句，不发光标前后的文字
+vocabulary_translation = true
 
 [status_bar]
 # 桌面上常驻、可拖动的悬浮状态条（Windows）：「中 / 英」格点一下切换模式（开着双拼时还显示方案名）、「，。」格切全角 / 半角标点、齿轮打开设置。

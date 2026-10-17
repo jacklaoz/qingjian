@@ -1,4 +1,4 @@
-//! 「云服务」页：云联想（开关、云端词格数、整句补全、整句候选翻译），服务（接口地址、模型、密钥、测试连接）。
+//! 「云服务」页：云联想（开关、云端词格数、整句补全、整句候选翻译、生词本整句翻译），服务（接口地址、模型、密钥、测试连接）。
 
 use bamboo_slip::taffy::NodeId;
 use bamboo_slip::{Button, RenderError, SettingRow, Stepper, TextField, Ui, group, section_title};
@@ -97,6 +97,17 @@ pub fn cloud(ui: &mut Ui<Message>, page: &Page) -> Result<Vec<NodeId>, RenderErr
             off,
         )?,
     ]);
+    if Feature::VocabularyTranslation.here() {
+        rows.push(toggle_info(
+            ui,
+            page,
+            "生词本整句翻译",
+            Some("打完一句话后单独把这句发给服务，译文记进生词本的时间线；不发光标前后的文字"),
+            ("predict", "vocabulary_translation"),
+            predict.vocabulary_translation,
+            off,
+        )?);
+    }
     out.push(section_title(ui, theme, "云联想")?);
     out.push(group(ui, theme, &rows)?);
 

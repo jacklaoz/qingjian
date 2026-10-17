@@ -15,6 +15,7 @@ pub enum Glyph {
     Dictionary,
     Cloud,
     Stats,
+    Vocabulary,
     Advanced,
     About,
     Search,
@@ -132,6 +133,14 @@ impl Icon for Glyph {
                 pen.line(&[(3.5, 13.0), (3.5, 9.0)]);
                 pen.line(&[(8.0, 13.0), (8.0, 3.5)]);
                 pen.line(&[(12.5, 13.0), (12.5, 6.5)]);
+            }
+            // 卡片上一个 A，右边两行释义
+            Glyph::Vocabulary => {
+                pen.round_rect(1.25, 2.25, 13.5, 11.5, 2.0, false);
+                pen.line(&[(3.75, 11.0), (5.75, 5.0), (7.75, 11.0)]);
+                pen.line(&[(4.5, 8.75), (7.0, 8.75)]);
+                pen.line(&[(9.75, 6.25), (12.25, 6.25)]);
+                pen.line(&[(9.75, 9.25), (12.25, 9.25)]);
             }
             // 终端提示符
             Glyph::Advanced => {

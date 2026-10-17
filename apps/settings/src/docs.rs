@@ -52,6 +52,24 @@ const LINKS: &[(PageId, &str, &str, &str)] = &[
         "emoji、颜文字与符号",
     ),
     (PageId::Candidates, "学习输入习惯", SETTINGS, "候选"),
+    (
+        PageId::Cloud,
+        "生词本整句翻译",
+        "learning/translation",
+        "生词本",
+    ),
+    (
+        PageId::Vocabulary,
+        "导出列出的词",
+        "learning/translation",
+        "生词本",
+    ),
+    (
+        PageId::Vocabulary,
+        "清空生词本",
+        "learning/translation",
+        "生词本",
+    ),
     (PageId::Candidates, "本地整句模型", "input/local-model", ""),
     (
         PageId::Candidates,

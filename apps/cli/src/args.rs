@@ -90,7 +90,7 @@ pub struct Args {
     #[arg(long)]
     pub chinese_first: bool,
 
-    /// 双拼方案（xiaohe / ziranma / microsoft / sogou / abc / xiaolang / shoudao / jiajia），覆盖配置里的 [general] shuangpin；off 强制全拼
+    /// 双拼方案（xiaohe / ziranma / microsoft / sogou / abc / xiaolang / shoudao / jiajia / ziguang），覆盖配置里的 [general] shuangpin；off 强制全拼
     #[arg(long)]
     pub shuangpin: Option<String>,
 
@@ -142,6 +142,11 @@ pub struct Args {
     /// 挖词的最长字数（配 --mine-log，缺省 6）
     #[arg(long, default_value_t = 6, requires = "mine_log")]
     pub mine_max_chars: usize,
+
+    /// 把过阈值的**全拼**行直接并进用户词（配 --mine-log）：给了 --user-dict 写回同目录的
+    /// user-words.tsv，不给则只打印预演；简拼行单独列出等人工补读音
+    #[arg(long, requires = "mine_log")]
+    pub mine_apply: bool,
 
     /// 回放 / 整句评测时打印前 N 条没命中首选的例子
     #[arg(long, default_value_t = 20)]

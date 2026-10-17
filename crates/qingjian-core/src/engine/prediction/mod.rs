@@ -344,9 +344,10 @@ impl Engine {
         let keys = self.composition.scope().to_owned();
         let log_id = self.log_commit(&keys, text, InputSource::CloudSentence);
         self.meter_commit(text, InputSource::CloudSentence, false);
+        self.translate_for_encounter(text);
         self.composition.drain_scope();
         self.punctuation.note_committed(text);
-        self.history.record(text);
+        self.note_text(text);
         match sentence::segment_text(text, &*self.language_model) {
             Some(clauses) => {
                 let buffer_left = !self.composition.is_empty();
@@ -373,6 +374,7 @@ impl Engine {
             tail: traditional_text.chars().last(),
             input,
             chosen: None,
+            choice: None,
             transitions: std::mem::take(&mut self.recording),
             typos: Vec::new(),
             erased: 0,

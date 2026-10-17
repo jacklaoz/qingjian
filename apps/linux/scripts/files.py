@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # //! 安装文件清单与校验；不管理桌面服务、系统文件或用户数据。
-# //! 装哪几支（设置程序 / fcitx5 插件 / IBus 前端 / systemd 单元）由 install.sh 决定，这里只按给的路径照做。
+# //! 装哪几支（设置程序 / Fcitx5 或 Fcitx4 插件 / IBus 前端 / systemd 单元）由 install.sh 决定，这里只按给的路径照做。
 import argparse
 import hashlib
 import json
@@ -12,7 +12,14 @@ import tarfile
 
 def digest(path):
     with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+        return digest_stream(stream)
+
+
+def digest_stream(stream):
+    value = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+        value.update(chunk)
+    return value.hexdigest()
 
 
 def parse_args():
@@ -24,6 +31,7 @@ def parse_args():
     parser.add_argument('--server', help='Server 可执行文件')
     parser.add_argument('--settings', help='设置程序 qingjian-settings；不给就不装它与菜单项')
     parser.add_argument('--plugin', help='fcitx5 插件 qingjian.so；这一支不装就不给')
+    parser.add_argument('--fcitx4-plugin', help='Fcitx4 插件 fcitx-qingjian.so；这一支不装就不给')
     parser.add_argument('--ibus', help='IBus 前端可执行文件；这一支不装就不给')
     parser.add_argument('--ibus-xml', help='IBus 组件 XML（install.sh 按安装路径生成好的）')
     parser.add_argument('--ibus-env', help='设 IBUS_COMPONENT_PATH 的 environment.d 片段（install.sh 生成好的）')
@@ -50,7 +58,7 @@ def product_data(root, resources, files):
             source = (root / member.name).resolve()
             if not source.is_relative_to((root / 'data').resolve()):
                 raise SystemExit('数据包路径越界')
-            checksum = hashlib.file_digest(bundle.extractfile(member), 'sha256').hexdigest()
+            checksum = digest_stream(bundle.extractfile(member))
             if not source.is_file() or digest(source) != checksum:
                 raise SystemExit(f'产品数据校验失败：{member.name}')
             verified[source] = checksum
@@ -140,6 +148,12 @@ def main():
         files[prefix / 'lib/fcitx5/qingjian.so'] = Path(options.plugin)
         for kind in ('addon', 'inputmethod'):
             files[data / f'fcitx5/{kind}/qingjian.conf'] = root / f'apps/linux/fcitx5/data/{kind}/qingjian.conf'
+    if options.fcitx4_plugin:
+        icon = root / 'assets/icon/fcitx4.png'
+        files[prefix / 'lib/fcitx/fcitx-qingjian.so'] = Path(options.fcitx4_plugin)
+        files[config / 'fcitx/addon/fcitx-qingjian.conf'] = root / 'apps/linux/fcitx4/data/addon/fcitx-qingjian.conf'
+        files[config / 'fcitx/imicon/qingjian.png'] = icon
+        files[data / 'icons/hicolor/48x48/apps/fcitx-qingjian.png'] = icon
     if options.ibus:
         files[prefix / 'bin/qingjian-linux-ibus'] = Path(options.ibus)
         # 组件 XML 里写死了可执行文件的绝对路径，所以由 install.sh 按 prefix 生成好再交过来
@@ -160,6 +174,8 @@ def main():
         shutil.copy2(source, temporary)
         if target == data / 'fcitx5/addon/qingjian.conf':
             temporary.write_text(temporary.read_text().replace('Library=qingjian\n', f'Library={prefix}/lib/fcitx5/qingjian\n'))
+        elif target == config / 'fcitx/addon/fcitx-qingjian.conf':
+            temporary.write_text(temporary.read_text().replace('Library=fcitx-qingjian.so\n', f'Library={prefix}/lib/fcitx/fcitx-qingjian.so\n'))
         if target == data / 'applications/qingjian-settings.desktop':
             temporary.write_text(temporary.read_text().replace('Exec=qingjian-settings\n', f'Exec={prefix}/bin/qingjian-settings\n'))
         temporary.replace(target)

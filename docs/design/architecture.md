@@ -83,7 +83,7 @@ qingjian-core
 │               #   SentenceScorer trait（qingjian-neural 实现）：convert_paths 出前 K 条路径，Engine（engine/rescoring）按 路径分 + λ·(神经分 − 静态分) 重排，异步时后台线程打分、壳停顿后取
 ├── emoji           # emoji 候选：EmojiTable（词 → emoji，Unicode CLDR 中文 annotations）
 ├── fuzzy           # 模糊音：FuzzyRules（配置 [fuzzy]）把每个音节扩展成多种写法，Expanded 借出给词库多写法查询
-├── shuangpin       # 双拼：Scheme 八套方案的键位表，decode 把敲的键解成全拼（音节间带 '），Decoded 把上屏消耗换算回键数；切分之后全部复用全拼
+├── shuangpin       # 双拼：Scheme 九套方案的键位表，decode 把敲的键解成全拼（音节间带 '），Decoded 把上屏消耗换算回键数；切分之后全部复用全拼
 │                   # engine::ModeKeys（配置 [shortcut]）：表达式 / 问字前缀键，只能是 v / u / i；问字键后跟十六进制出码点字符
 ├── engine          # 对外门面：Engine，以及 Translator / Learner trait 与空实现
 └── storage         # 小文件落盘原语：write_atomic（临时文件 + fsync + 改名）、read_text_lossy；学习 crate 与配置都用它
@@ -416,7 +416,14 @@ CC-CEDICT 表（`dict-convert cedict`）保留为备用来源，覆盖面广但�
 - **IPC 协议**：`qingjian-platform::protocol`，Server ↔ DLL 两端共用、全部 serde。`ClientMessage`（DLL → Server：
   开 / 关会话、按键、上屏、回上下文、回选区、报中英模式）与 `ServerMessage`（Server → DLL：按键结果、上屏结果、异步重绘、请求上下文、请求选区）；
   失焦 / 停用时 DLL 发 `Commit`，Server 回 `Committed { text }`（缓冲区原样交出，对应 macOS 的 `commitComposition`），
-  DLL 用最近收键记下的 `ITfContext` 经编辑会话落进文档；应用强行终止组句（`OnCompositionTerminated`）时拼音已被框架定成普通文本，
+  DLL 用最近收键记下的 `ITfContext` 经编辑会话落进文档。**「失焦」有两条路，都汇到 `TextService_Impl::set_focus`**：
+  线程内换文档走 `ITfKeyEventSink::OnSetFocus`，切到别的应用（命令行、终端这类抢焦点的窗口）走
+  `ITfThreadFocusSink::OnKillThreadFocus`——后者才是切窗口时真正触发的那条（`OnSetFocus` 不触发），
+  两边都得落定，否则拼音留在 Server 缓冲里，切回**同一个**应用时 Server 认作同一会话、`ensure_focus` 不清缓冲，
+  接着敲就接在旧拼音后面，候选窗口也一直挂着；
+  连接断开（应用被关 / 崩了，DLL 来不及发 `CloseSession`）时 `ipc::pump` 记下的、本连接开过的会话
+  由 Server 自己 `CloseSession` 掉，同一个循环线上的命名管道与测试里的内存流共用，收尾行为不会出现两份；
+  应用强行终止组句（`OnCompositionTerminated`）时拼音已被框架定成普通文本，
   DLL 只记「Server 缓冲过期」，下次说话前先 `Commit` 并丢掉交出的文本，不再插一次。
   中英模式：**Windows 与 macOS 机制不同**。macOS 用 Caps Lock 当中英切换键；Windows 按本地习惯，单击切换键在中 / 英间翻转，
   切换键由 `[shortcut] switch_mode` 勾选（`SwitchKeys`：单击 `shift`（缺省）/ 单击 `control` / `ctrl+alt+space`，可多选，空列表 = 不用键切），

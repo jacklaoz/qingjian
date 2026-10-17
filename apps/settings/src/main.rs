@@ -19,6 +19,7 @@ mod stats;
 mod support;
 mod system;
 mod view;
+mod vocabulary;
 
 use std::path::PathBuf;
 

@@ -121,7 +121,7 @@ fn speed(usage: &Usage, min_ms: u64) -> Option<f64> {
         .then(|| usage.typed_hanzi as f64 * 60_000.0 / usage.typing_ms as f64)
 }
 
-fn language_name(language: Language) -> &'static str {
+pub fn language_name(language: Language) -> &'static str {
     match language {
         Language::Chinese => "中文",
         Language::English => "英语",

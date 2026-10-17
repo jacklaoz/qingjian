@@ -8,6 +8,7 @@ mod library;
 mod phrases;
 mod search;
 mod shortcuts;
+mod vocabulary;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -31,6 +32,7 @@ use crate::stats::Stats;
 use crate::system::action::Action;
 use crate::system::paths;
 use crate::view::previews::Previews;
+use crate::vocabulary::Vocabulary;
 
 /// 字号步进的范围（点）。
 const SIZES: std::ops::RangeInclusive<f32> = 6.0..=72.0;
@@ -89,6 +91,9 @@ pub struct Settings {
 
     /// 统计页在「云服务」层。
     pub stats_cloud: bool,
+
+    /// 生词本页的词，进页时读；学习语言关着为 `None`。
+    pub vocabulary: Option<Vocabulary>,
 
     waker: Option<Waker>,
 
@@ -159,6 +164,7 @@ impl Settings {
             phrase: None,
             stats: None,
             stats_cloud: false,
+            vocabulary: None,
             waker: None,
             search: Search::default(),
             ctrl_space: system_ctrl_space(),

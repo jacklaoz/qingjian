@@ -9,11 +9,13 @@ pub use popup::Popup;
 pub use size_kind::SizeKind;
 
 use bamboo_slip::{Edit, KeyPress};
+use qingjian_core::Language;
 
 use crate::library::Kind;
 use crate::page_id::PageId;
 use crate::shortcut::Shortcut;
 use crate::system::action::Action;
+use crate::vocabulary::{Filter, Format, Sort, View};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -74,6 +76,22 @@ pub enum Message {
     ClearSearch,
     /// 点了第几条搜索结果。
     Jump(usize),
+    /// 生词本切「时间线 / 词表」。
+    VocabularyView(View),
+    /// 生词本切到这门语言。
+    VocabularyLanguage(Language),
+    /// 时间线翻到这天。
+    VocabularyDay(jiff::civil::Date),
+    VocabularyFilter(Filter),
+    VocabularySort(Sort),
+    /// 生词本翻到第几页（从 0 起）。
+    VocabularyPage(usize),
+    /// 标这个词认识（`false` 取消）。
+    VocabularyKnown(String, bool),
+    VocabularyRemove(String),
+    /// 清空生词本（第一下只是确认）。
+    VocabularyClear,
+    VocabularyExport(Format),
     /// 点了 ⓘ：打开这个网址（官网文档的一段）。
     OpenDoc(String),
     Quit,

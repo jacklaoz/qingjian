@@ -32,11 +32,13 @@ pub enum Feature {
     ApiUsage,
     /// Windows 的手动云联想与请求节奏设置。
     CloudRequestControls,
+    /// 上屏的整句翻译后记进生词本（随释义兜底）。
+    VocabularyTranslation,
 }
 
 impl Feature {
     #[cfg(test)]
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::AuxCode,
         Self::SwitchKeys,
         Self::DefaultEnglish,
@@ -51,6 +53,7 @@ impl Feature {
         Self::SystemTextReplacements,
         Self::ApiUsage,
         Self::CloudRequestControls,
+        Self::VocabularyTranslation,
     ];
 
     /// 当前平台显示这一项。
@@ -82,15 +85,17 @@ impl Feature {
             Self::AutoSpace => [Yes, Todo, Todo],
             // macOS 看菜单栏图标，Linux 看 Fcitx5 的托盘
             Self::StatusBar => [No, Yes, No],
-            Self::HorizontalGrid => [Yes, Todo, Todo],
+            Self::HorizontalGrid => [Yes, Yes, Todo],
             Self::ExtraPageKeys => [Todo, Yes, Todo],
-            Self::HighlightKeys => [Todo, Yes, Todo],
+            Self::HighlightKeys => [Yes, Yes, Todo],
             Self::TogglePunctuation => [Todo, Yes, Todo],
             // 系统的文本替换只有 macOS 有
             Self::SystemTextReplacements => [Yes, No, No],
-            // Linux 的输入法还没接云服务
+            // Linux 已接云服务，尚未记录云服务用量
             Self::ApiUsage => [Yes, Yes, Todo],
             Self::CloudRequestControls => [Todo, Yes, Todo],
+            // Linux 还没接释义兜底
+            Self::VocabularyTranslation => [Yes, Yes, Todo],
         }
     }
 
@@ -112,6 +117,7 @@ impl Feature {
             Self::SystemTextReplacements => "也用系统的文本替换",
             Self::ApiUsage => "云服务用量统计",
             Self::CloudRequestControls => "按需云联想与请求节奏",
+            Self::VocabularyTranslation => "生词本整句翻译",
         }
     }
 
@@ -138,6 +144,7 @@ impl Feature {
                 (PageId::Cloud, "最短请求间隔"),
                 (PageId::Shortcuts, "按需 AI 联想"),
             ],
+            Self::VocabularyTranslation => &[(PageId::Cloud, "生词本整句翻译")],
             Self::EnglishPunctuation | Self::StatusBar | Self::HorizontalGrid | Self::ApiUsage => {
                 &[]
             }

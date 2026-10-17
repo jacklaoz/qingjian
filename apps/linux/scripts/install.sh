@@ -15,12 +15,14 @@ while (($#)); do
     --frontend) frontend=${2:?--frontend 需要 auto/fcitx5/ibus/both}; shift 2 ;;
     --debug) build_profile=debug; cmake_type=Debug; shift ;;
     --sample) sample=true; shift ;;
+    --fcitx4) frontend=fcitx4; shift ;;
     --enable-service) enable_service=true; shift ;;
     --help)
       cat <<'USAGE'
 用法：install.sh [选项]
   --prefix 目录        安装到哪（缺省 ~/.local）
-  --frontend 值        auto（缺省，能装的都装）/ fcitx5 / ibus / both
+  --frontend 值        auto（缺省，能装的都装）/ fcitx5 / ibus / both / fcitx4（Fcitx4 只在指定时装）
+  --fcitx4             等于 --frontend fcitx4
   --debug              装 debug 构建
   --sample             只装样例词库，不要产品数据
   --enable-service     顺手 systemctl --user enable --now 把 Server 挂上开机自启
@@ -30,7 +32,7 @@ USAGE
   esac
 done
 [[ "$install_prefix" = /* && "$install_prefix" != / ]] || { echo '需要非根绝对安装路径' >&2; exit 2; }
-case "$frontend" in auto|fcitx5|ibus|both) ;; *) echo "--frontend 只认 auto / fcitx5 / ibus / both" >&2; exit 2 ;; esac
+case "$frontend" in auto|fcitx5|ibus|both|fcitx4) ;; *) echo "--frontend 只认 auto / fcitx5 / ibus / both / fcitx4" >&2; exit 2 ;; esac
 
 # fcitx5 那一支的插件是 C++，要编译器与 fcitx5 的开发包；缺了只能说清楚缺什么。
 fcitx5_missing() {
@@ -40,6 +42,20 @@ fcitx5_missing() {
   done
   if command -v pkg-config >/dev/null 2>&1; then
     for module in Fcitx5Core Fcitx5Utils Fcitx5Config nlohmann_json; do
+      pkg-config --exists "$module" || missing+=("$module")
+    done
+  fi
+  echo "${missing[*]:-}"
+}
+
+# Fcitx4（Ubuntu 22.04 这类还在用 Fcitx4 的系统）：插件同样是 C++，另要 X11 的开发包。
+fcitx4_missing() {
+  local missing=() tool module
+  for tool in cmake c++ pkg-config; do
+    command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+  done
+  if command -v pkg-config >/dev/null 2>&1; then
+    for module in fcitx x11 xres nlohmann_json; do
       pkg-config --exists "$module" || missing+=("$module")
     done
   fi
@@ -68,9 +84,11 @@ fcitx5_gap=$(fcitx5_missing)
 ibus_gap=$(ibus_missing)
 in_use=$(current_framework)
 want_fcitx5=false
+want_fcitx4=false
 want_ibus=false
 case "$frontend" in
   fcitx5) want_fcitx5=true ;;
+  fcitx4) want_fcitx4=true ;;
   ibus) want_ibus=true ;;
   both) want_fcitx5=true; want_ibus=true ;;
   auto)
@@ -82,11 +100,18 @@ if [[ "$want_fcitx5" == true && -n "$fcitx5_gap" ]]; then
   echo 'Debian / Ubuntu：sudo apt install cmake g++ pkg-config libfcitx5core-dev libfcitx5utils-dev libfcitx5config-dev nlohmann-json3-dev' >&2
   exit 1
 fi
+fcitx4_gap=
+[[ "$want_fcitx4" != true ]] || fcitx4_gap=$(fcitx4_missing)
+if [[ -n "$fcitx4_gap" ]]; then
+  echo "装不了 Fcitx4 那一支，缺：$fcitx4_gap" >&2
+  echo 'Debian / Ubuntu：sudo apt install cmake g++ pkg-config fcitx-libs-dev libx11-dev libxres-dev nlohmann-json3-dev' >&2
+  exit 1
+fi
 if [[ "$want_ibus" == true && -n "$ibus_gap" && "$frontend" != auto ]]; then
   echo "装不了 IBus 那一支，缺：$ibus_gap（Debian / Ubuntu：sudo apt install ibus）" >&2
   exit 1
 fi
-if [[ "$want_fcitx5" == false && "$want_ibus" == false ]]; then
+if [[ "$want_fcitx5" == false && "$want_fcitx4" == false && "$want_ibus" == false ]]; then
   echo '两个框架都没找到：fcitx5 缺开发包、机器上也没有 ibus-daemon。' >&2
   echo '装上其中一个再来，或用 --frontend 明确指定要装哪一支。' >&2
   exit 1
@@ -97,7 +122,7 @@ if [[ "$frontend" == auto ]]; then
   [[ "$want_ibus" == true ]] || echo "跳过 IBus 那一支（缺：$ibus_gap）"
 fi
 # 最容易踩的一脚：装完一切正常，唯独正在用的那个框架什么都没装上。
-if [[ "$in_use" == fcitx5 && "$want_fcitx5" == false ]]; then
+if [[ "$in_use" == fcitx5 && "$want_fcitx5" == false && "$want_fcitx4" == false ]]; then
   echo "注意：这个会话在用 fcitx5，但这次没装 fcitx5 那一支（缺：$fcitx5_gap）" >&2
 fi
 if [[ "$in_use" == ibus && "$want_ibus" == false ]]; then
@@ -134,6 +159,12 @@ if [[ "$want_fcitx5" == true ]]; then
   cmake --build "$cmake_output" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
   files_args+=(--plugin "$cmake_output/qingjian.so")
 fi
+if [[ "$want_fcitx4" == true ]]; then
+  cmake_output="$repo_root/target/fcitx4-install-$build_profile"
+  cmake -S "$repo_root/apps/linux/fcitx4" -B "$cmake_output" "-DCMAKE_BUILD_TYPE=$cmake_type"
+  cmake --build "$cmake_output" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
+  files_args+=(--fcitx4-plugin "$cmake_output/fcitx-qingjian.so")
+fi
 if [[ "$want_ibus" == true ]]; then
   # 组件 XML 里的 <exec> 是装好之后的绝对路径，所以现在就按 prefix 生成
   "$built/qingjian-linux-ibus" --ibus-xml "$install_prefix/bin/qingjian-linux-ibus" > "$staged/qingjian.xml"
@@ -166,6 +197,7 @@ python3 "$repo_root/apps/linux/scripts/files.py" "${files_args[@]}"
 
 echo '已安装：'
 [[ "$want_fcitx5" != true ]] || echo "  fcitx5 插件  $install_prefix/lib/fcitx5/qingjian.so"
+[[ "$want_fcitx4" != true ]] || echo "  Fcitx4 插件  $install_prefix/lib/fcitx/fcitx-qingjian.so"
 [[ "$want_ibus" != true ]] || echo "  IBus 前端    $install_prefix/bin/qingjian-linux-ibus"
 echo "  Server       $install_prefix/bin/qingjian-linux-server"
 echo "  设置程序     $install_prefix/bin/qingjian-settings（应用菜单里的“青简设置”）"
@@ -188,6 +220,7 @@ else
   echo "Server 要手动起：$install_prefix/bin/qingjian-linux-server"
 fi
 [[ "$want_fcitx5" != true ]] || echo 'fcitx5：重启 Fcitx5，在配置工具取消“仅显示当前语言”后添加“青简”。'
+[[ "$want_fcitx4" != true ]] || echo 'Fcitx4：重启 Fcitx4，在配置工具添加“青简”。'
 if [[ "$want_ibus" == true ]]; then
   echo 'IBus：**重新登录一次**（组件路径在会话启动时读），然后在“设置 → 键盘”里添加“青简”，或 ibus engine qingjian。'
   echo '      IBus 那一支只是前端，要 Server 起着才能打字；没加 --enable-service 的话记得按上面的命令挂自启。'

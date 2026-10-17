@@ -5,8 +5,8 @@ use std::time::Instant;
 use super::Engine;
 use super::input_log::{CommitEntry, InputLogEntry, InputLogger, InputSource, LOGGED_CANDIDATES};
 use super::statistics::Usage;
-use super::vocabulary::{FRESH_UNTIL, VocabularySummary};
-use crate::candidate::{Candidate, CandidateKind, Translation};
+use super::vocabulary::{Encounter, FRESH_UNTIL, VocabularySummary};
+use crate::candidate::{Candidate, CandidateKind, Language, Translation};
 use crate::sentence;
 
 mod forgotten;
@@ -26,11 +26,48 @@ impl Engine {
         for gloss in filled {
             if gloss.translation.language == self.translator.language() {
                 tracing::debug!(word = %gloss.word, "释义兜底写入个人释义表");
+                // 兜底只为刚上屏的词问：它也算一次相遇
+                self.record_encounter(&gloss.word, &gloss.translation, 0);
                 self.translator.learn(&gloss.word, gloss.translation);
                 learned += 1;
             }
         }
+        for encounter in self.gloss_filler.poll_translations() {
+            if encounter.language == self.translator.language() {
+                self.vocabulary.record_encounter(&encounter);
+            }
+        }
         learned
+    }
+
+    /// 上屏了带译词的中文：记一次相遇，说法取直接打出的那条（没有就第一条）。单字不记，满屏的 的 了 是 没有复习价值。
+    pub(super) fn record_encounter(&mut self, text: &str, translation: &Translation, sense: usize) {
+        if self.private || !worth_encounter(text) {
+            return;
+        }
+        let senses = translation.senses();
+        let Some(sense) = senses.get(sense).or_else(|| senses.first()) else {
+            return;
+        };
+        self.vocabulary.record_encounter(&Encounter {
+            language: translation.language,
+            text: text.to_owned(),
+            translation: sense.text.clone(),
+            reading: sense.reading.clone(),
+        });
+    }
+
+    /// 上屏了一段没有现成译词的中文（整句、云端整句、分几次上屏拼成的一句）：释义兜底开着时交给它整段翻译，翻好了进相遇。
+    pub(super) fn translate_for_encounter(&mut self, text: &str) {
+        let language = self.translator.language();
+        if self.private
+            || language == Language::Chinese
+            || !self.gloss_filler.is_enabled()
+            || !worth_encounter(text)
+        {
+            return;
+        }
+        self.gloss_filler.translate(language, text);
     }
 
     /// 当前学习语言的词汇汇总（偏好设置「统计」页）。
@@ -67,6 +104,34 @@ impl Engine {
         }
         for (language, word) in std::mem::take(&mut self.displayed) {
             self.vocabulary.record_exposure(language, &word);
+        }
+    }
+
+    /// 上屏文字进本会话历史，也接到等着当例句的那句话后面。私密输入中的文字不进例句。
+    pub(super) fn note_text(&mut self, text: &str) {
+        self.history.record(text);
+        if self.private {
+            return;
+        }
+        let vocabulary = &mut self.vocabulary;
+        let finished = self
+            .examples
+            .push_text(text, |language, word, source, example| {
+                vocabulary.record_example(language, word, source, example);
+            });
+        for sentence in finished {
+            self.translate_for_encounter(&sentence);
+        }
+    }
+
+    /// 上文断开：手上那句话就算写完了。
+    pub(super) fn finish_examples(&mut self) {
+        let vocabulary = &mut self.vocabulary;
+        let finished = self.examples.break_off(|language, word, source, example| {
+            vocabulary.record_example(language, word, source, example);
+        });
+        if let Some(sentence) = finished {
+            self.translate_for_encounter(&sentence);
         }
     }
 
@@ -222,4 +287,12 @@ impl Engine {
     pub(super) fn forget_span_cache(&self) {
         self.span_cache.borrow_mut().clear();
     }
+}
+
+/// 至少两个汉字才记相遇。
+fn worth_encounter(text: &str) -> bool {
+    text.chars()
+        .filter(|c| sentence::is_han(*c))
+        .nth(1)
+        .is_some()
 }

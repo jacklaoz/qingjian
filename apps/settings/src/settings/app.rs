@@ -31,7 +31,11 @@ impl App for Settings {
         let armed = self.armed.take();
         if !matches!(
             message,
-            Message::Run(_) | Message::TestCloud | Message::CheckUpdate | Message::Import(_)
+            Message::Run(_)
+                | Message::TestCloud
+                | Message::CheckUpdate
+                | Message::Import(_)
+                | Message::VocabularyExport(_)
         ) {
             self.notice = None;
         }
@@ -49,6 +53,9 @@ impl App for Settings {
                 }
                 if page == PageId::Stats {
                     self.stats = Some(Stats::load(&self.config.general));
+                }
+                if page == PageId::Vocabulary {
+                    self.open_vocabulary();
                 }
             }
             Message::SystemCtrlSpace(on) => self.set_ctrl_space(on),
@@ -117,7 +124,22 @@ impl App for Settings {
                 }
                 self.write("shortcut", key, letter.to_string());
             }
+            Message::VocabularyView(_)
+            | Message::VocabularyLanguage(_)
+            | Message::VocabularyDay(_)
+            | Message::VocabularyFilter(_)
+            | Message::VocabularySort(_)
+            | Message::VocabularyPage(_)
+            | Message::VocabularyKnown(..)
+            | Message::VocabularyRemove(_)
+            | Message::VocabularyClear
+            | Message::VocabularyExport(_) => self.vocabulary_message(message),
             Message::Edit(id, edit) => {
+                if id == FieldId::VocabularySearch
+                    && let Some(vocabulary) = self.vocabulary.as_mut()
+                {
+                    vocabulary.page = 0;
+                }
                 if let Some(copied) = self
                     .fields
                     .get_mut(&id)

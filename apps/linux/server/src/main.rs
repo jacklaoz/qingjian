@@ -1,4 +1,4 @@
-//! Linux 本地输入服务启动入口；云服务在首版保持关闭，本地整句模型按 `[model]` 开关在后台加载，之后改配置由热加载应用。
+//! Linux 本地输入服务；云联想与本地模型按配置加载，之后改配置由热加载应用。
 #[cfg(target_os = "linux")]
 mod paths;
 
@@ -82,6 +82,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     engine
         .set_custom_phrases(config.custom_phrases.clone())
         .map_err(std::io::Error::other)?;
+    assembly::attach_cloud(&mut engine, &config.predict);
     engine.log_session(env!("CARGO_PKG_VERSION"), "linux");
     let mut router = Router::new(engine, RouterConfig::from(&config));
     router.configure_local_model(find_model(Some(&user_dir), &root), &config.model);
