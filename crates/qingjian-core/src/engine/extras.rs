@@ -1,8 +1,8 @@
 //! 附加候选：日期时间等快捷项、中英混输的英文词与补全、emoji 与颜文字、符号。
 
 use super::{
-    EMOJI_PER_WORD, EMOJI_SCAN, ENGLISH_COMPLETIONS, Engine, KAOMOJI_PER_WORD, Learner,
-    MIN_COMPLETION_LETTERS,
+    EMOJI_PER_WORD, EMOJI_SCAN, ENGLISH_AFTER_SYLLABLE, ENGLISH_COMPLETIONS, Engine,
+    KAOMOJI_PER_WORD, Learner, MIN_COMPLETION_LETTERS,
 };
 use crate::candidate::{Candidate, CandidateKind};
 use crate::emoji::EmojiTable;
@@ -82,7 +82,13 @@ impl Engine {
     /// 两字母的全大写缩写（`mp` → MP、`bm` → BM）是个例外：整段太短、几乎总是在打中文（门票 / 编码），
     /// 这种让中文先；超过两个字母的正文英文（cargo / rust）照旧——按词频一刀切会把它们一起挤掉。
     /// 例外只管**没选过**的英文词：用户选过的照旧排第一（选过 OK，下次敲 `ok` 还是 OK 在前）。
-    pub(super) fn insert_english(&self, items: &mut Vec<Candidate>, unlikely_pinyin: bool) {
+    /// 整段只是一个完整音节（`single_syllable`）时没选过的英文词排到 [`ENGLISH_AFTER_SYLLABLE`] 个候选之后。
+    pub(super) fn insert_english(
+        &self,
+        items: &mut Vec<Candidate>,
+        unlikely_pinyin: bool,
+        single_syllable: bool,
+    ) {
         if !self.english_in_chinese {
             return;
         }
@@ -123,6 +129,8 @@ impl Engine {
             !self.chinese_first && unlikely_pinyin && chosen <= english_weight && !short_acronym;
         let mut position = if items.is_empty() || english_first {
             0
+        } else if single_syllable && english_weight == 0 {
+            items.len().min(ENGLISH_AFTER_SYLLABLE)
         } else {
             1
         };

@@ -29,6 +29,7 @@ description: 日期时间、算式与中文数字、按码点输入字符、中�
 - 整段输入为英文词时直接给出英文候选。拼音不成立时（`hello` 只能切成 `he l l o`）英文排第一，拼音成立时（`china`）英文排第二。
   打开「设置 → 候选」的「中文排在英文词前面」后英文固定排第二（`hello` 先 荷兰咯 再 hello，`key` 先 可以 再 key），
   `Space` 上屏的仍是中文，按 `2` 选英文；没有中文候选时（`github`）英文仍排第一。
+  整段只是一个音节时（`tui`、`ma`、`ce`），英文词（TUI、MA、Ce）排在前五个中文候选之后，免得把 推、马 这类常用字挤后面；选过一次之后回到第二。
   专名按正确大小写上屏：`windows` → **Windows**，`github` → **GitHub**，`python` → **Python**。
 - 拼音不成立且不少于 3 个字母时补全前缀：`compa` → company / companies / compared。
 - 不想在中文模式里看到英文词与补全，关闭「设置 → 候选」的「打拼音时也给英文词」（配置文件里是 `[general] english_in_chinese = false`），英文模式不受影响。

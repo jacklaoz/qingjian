@@ -58,6 +58,9 @@ CandidateLayout 保持 `set_cloud` 的首页末尾布局与本地首项；`set_c
 - 中英混输的英文词位置：`Engine::set_chinese_first`（配置 `[general] chinese_first`，缺省关）关着时拼音不像话的输入英文排第一（`extras::insert_english`，
   用户老选中文词时仍让中文在前），开着时整句先插、英文词紧随其后排第二（`query_inner` 里两步的先后按开关掉转）；句末英文词并入整句（`EnglishTail`）不受它影响。
   缺省关是回放定的（9241 词 / 269 条英文上屏：缺省开英文首选 82.5% → 7.1%）。
+  整段只是一个完整音节（`tui`、`ma`）时没选过的英文词排到第 `ENGLISH_AFTER_SYLLABLE`（5）个候选之后（2026-10-17 回放 4780 词 / 95 英文：
+  单音节上约 60 次中文选择各前移一位，词前五 98.1% → 98.2%，英文首选不变、前五 100% → 96.8%）；
+  同时试过末尾单字母（`ces` = ce s…）不给英文补全，英文首选掉到 60%（`bir` → birth、`cus` → customer 这类真在打英文），没采用。
 - 中西文自动空格（`spacing` 判交界，`engine/spacing.rs` 判上文；配置 `[general] auto_space`，缺省关）：`commit` / `take_raw` 自己补前导空格并把它记成一次直通，
   候选内部的交界在 `commit_with` 里补、`LastCommit.chars` 按补后的字数记；直通字符由壳先问 `auto_space_before`。上文取最近一条没退格的上屏末字，
   还没上屏过时用组句首键读到的应用前文（`rescoring_before`），删了一半或焦点离开后不知道上文就不补。

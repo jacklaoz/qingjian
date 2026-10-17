@@ -144,6 +144,43 @@ fn short_all_caps_acronym_yields_to_chinese() {
 }
 
 #[test]
+fn english_word_on_a_single_syllable_waits_behind_the_chinese_until_chosen() {
+    // `tui` 整段是一个完整音节：排第二的 TUI 会把 推 / 退 挤后面（日志回放：单音节上约 60 次选择各前移一位，
+    // 英文只有 3 次掉出前五），没选过的英文词排到前五个中文候选之后；选过一次就回到第二
+    let dictionary = Dictionary::parse(
+        "腿\ttui\t5000\n退\ttui\t4000\n推\ttui\t3000\n颓\ttui\t600\n褪\ttui\t400\n蜕\ttui\t100\n\
+         推送\ttui song\t3000\n",
+    )
+    .unwrap();
+    let words = WordList::parse("TUI\ttui\t3500\ntuisong\ttuisong\t1000\n").unwrap();
+    let mut engine = Engine::new(dictionary)
+        .with_english(words)
+        .with_learner(Box::new(CountingLearner(HashMap::new())));
+
+    engine.set_input("tui");
+    let all = texts_of(&engine);
+    assert_eq!(&all[..3], ["腿", "退", "推"]);
+    assert_eq!(all.iter().position(|t| t == "TUI"), Some(5));
+
+    // 两个音节（`tuisong`）不在这条里：英文仍排第二
+    engine.set_input("tuisong");
+    assert_eq!(texts_of(&engine)[1], "tuisong");
+
+    engine.set_input("tui");
+    let candidate = engine
+        .query()
+        .unwrap()
+        .candidates
+        .items
+        .into_iter()
+        .find(|c| c.text == "TUI")
+        .unwrap();
+    engine.commit(&candidate);
+    engine.set_input("tui");
+    assert_eq!(texts_of(&engine)[1], "TUI");
+}
+
+#[test]
 fn learned_english_word_keeps_first_place_over_the_two_letter_acronym_rule() {
     // `ok` / `pc` / `ll` 同样满足「两个字母的全大写缩写」，一刀切会把它们一起翻成中文；
     // 而用户**选过**的英文词要照旧排第一 —— 选过 OK，下次敲 `ok` 就该还是 OK 在前。

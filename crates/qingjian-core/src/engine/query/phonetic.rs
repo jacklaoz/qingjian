@@ -39,7 +39,7 @@ impl Engine {
             Ok(parsed) => parsed,
             Err(error) => {
                 let mut items = Vec::new();
-                self.insert_english(&mut items, true);
+                self.insert_english(&mut items, true, false);
                 self.insert_shortcuts(&mut items, keys);
                 if items.is_empty() {
                     return Err(error);
@@ -67,6 +67,10 @@ impl Engine {
         // 拼音「不像话」时试拼写纠错；纠正生效则按纠正后的切分查词，原串只用来记学习与显示
         let unlikely = correction::unlikely_pinyin(segmentations.first(), tail)
             || correction::trailing_single_letter(segmentations.first());
+        let single_syllable = tail.is_empty()
+            && segmentations
+                .first()
+                .is_some_and(|s| s.syllables.len() == 1 && s.syllables[0].complete);
         let correction = if unlikely {
             self.active_correction(scope)
         } else {
@@ -208,9 +212,9 @@ impl Engine {
                     english_tail.as_ref().filter(|_| correction.is_none()),
                     head_wins,
                 );
-                self.insert_english(&mut items, unlikely);
+                self.insert_english(&mut items, unlikely, single_syllable);
             } else {
-                self.insert_english(&mut items, unlikely);
+                self.insert_english(&mut items, unlikely, single_syllable);
                 self.insert_sentence(
                     &mut items,
                     &segmentations,

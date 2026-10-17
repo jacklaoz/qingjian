@@ -336,6 +336,10 @@ const ENGLISH_MODE_CANDIDATES: usize = 18;
 /// 英文补全至少要几个字母：太短的前缀谁都像。
 const MIN_COMPLETION_LETTERS: usize = 3;
 
+/// 整段只是一个完整音节（`tui` → TUI、`ce` → Ce、`ma` → MA）时，没选过的英文词排在前几个中文候选之后：
+/// 单音节几乎总是在打字，排第二会把常用字挤到后面。
+const ENGLISH_AFTER_SYLLABLE: usize = 5;
+
 /// 整段末尾当英文词的尾段至少几个字母，前面的拼音头至少几个字母（见 `query::EnglishTail`）。
 const MIN_ENGLISH_TAIL_LETTERS: usize = 2;
 const MIN_ENGLISH_TAIL_HEAD_LETTERS: usize = 2;
