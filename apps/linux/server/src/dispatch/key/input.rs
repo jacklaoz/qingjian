@@ -18,6 +18,10 @@ impl Router {
             return effect;
         }
         if event.modifiers.has_command_key() {
+            // Ctrl / Alt + 退格按词删，数不清删了几个字，撤销的账不记了（macOS 壳的 deleteWordBackward 同样处理）
+            if !self.composing() && event.virtual_key == codes::BACK {
+                self.engine.break_chain();
+            }
             return Effect::Passthrough;
         }
         let Some(c) = event.character.filter(|c| !c.is_control()) else {
@@ -85,9 +89,12 @@ impl Router {
     /// 退格 / Esc / 回车 / Tab / 方向键；没在组句时都交还应用。
     fn apply_function_key(&mut self, event: &KeyEvent) -> Effect {
         if !self.composing() {
-            // 回车交给应用：文本流里是一个段落边界（macOS 壳同样记）
-            if event.virtual_key == codes::RETURN {
-                self.engine.note_passthrough('\n');
+            match event.virtual_key {
+                // 回车交给应用：文本流里是一个段落边界（macOS 壳同样记）
+                codes::RETURN => self.engine.note_passthrough('\n'),
+                // 删的是应用里刚上屏的字：整个删掉再重打同一段拼音选别的，Core 把那次的学习退回去
+                codes::BACK => self.engine.note_backspace(),
+                _ => {}
             }
             return Effect::Passthrough;
         }

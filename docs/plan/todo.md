@@ -118,6 +118,9 @@
     （防回环），顺带刷指示器 + 上报 Server 让悬浮状态条也同步。纯 DLL 改动、无新协议。
   - [~] **符号面板**：代码完成，待真机测（2026-10-13）。这一版原生画（Direct2D，彩色 emoji），下一版换 qingjian-render；
     按键与鼠标同 macOS，入口在悬浮状态条「符」格与托盘中 / 英图标的右键菜单。
+  - [ ] **上屏后退格告诉 Core**（★★★ / 低 / 0.5 天）：Server 不在组句时收到退格只放行、不调 `Engine::note_backspace`（Ctrl + 退格调 `break_chain`），
+    「选错了词」删掉重选不撤销学习，误上屏的词越选越前（`docs/user/getting-started/first-input.md` 写着各平台都有）。
+    Linux 2026-10-17 补上（`apps/linux/server/src/dispatch/key/input.rs`），照着改 `apps/windows/server/src/dispatch/key/input.rs`，真机验删掉重选后排序回来。
   - [ ] 发版：换 **Certum 开源代码签名证书**重签（开发全程自签 + 本机受信任根，见 `installer/sign-local.ps1`）、
     `windows-v<版本>` 标签与 CI。
   - [ ] **本地整句模型上 Windows**：Server 已接（`dispatch/rescore/`，CPU 推理，设置「云服务」页有开关，安装包带 `data\model`），待真机验：每次重排的耗时（前文 + 几条路径一次前向，CPU 上可能几十到一百多毫秒，超了就缩前文长度）、模型加载时间；
