@@ -602,8 +602,9 @@ impl Engine {
     }
 
     /// `pos` 处这个音节能看到的输入段（到下一个 `'` 为止）与它的起点（跳过开头的 `'`）。
+    /// 缓冲区本身以 `'` 开头（`shan'gou` 选了 闪 剩下 `'gou`）时也要跳过，否则一个键都吃不掉。
     fn rest_at<'a>(&self, input: &'a str, pos: usize) -> (&'a str, usize) {
-        let start = if pos > 0 && input[pos..].starts_with('\'') {
+        let start = if input[pos..].starts_with('\'') {
             pos + 1
         } else {
             pos

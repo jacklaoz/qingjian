@@ -8,6 +8,7 @@ Linux Server 在 `[predict] enabled = true` 且密钥可用时接入共享的 `C
 ## 构建与测试
 
 需要 Rust 1.96、CMake 3.16、C++20 编译器、pkg-config，以及 OpenSSL（`libssl-dev`，云服务依赖的 TLS 绑定要它）、Fcitx5 Core/Config/Utils 和 nlohmann-json 的开发包；`install.sh` 开头会检查并列出缺的。
+自绘界面另需三个字体包（`fonts-noto-core` / `fonts-noto-cjk` / `fonts-noto-color-emoji`）：没有 UI 字体时 `FontLibrary::system` 直接返回 `NoUiFont`、程序起不来，缺 CJK 或 emoji 则不崩但中文界面文字与表情画不出来。
 构建最低 API 为 Fcitx5 5.1.8，CI 使用 Ubuntu 26.04 的 Fcitx5 5.1.19；Ubuntu 24.04 自带的 5.1.7 不满足要求。
 桌面运行已验证的范围见下文，构建版本门槛不代表全部桌面已验收。
 
@@ -52,6 +53,9 @@ FocusOut 的行内预编辑由框架或声明 ClientUnfocusCommit 的客户端�
 
 每次候选响应绑定 generation/context/revision，revision 在整个 Server 内递增；过期或跨会话点击返回 Ignored，不改变当前会话的展示状态。
 默认面板只展示第一条释义，完成面板更新后报告当前页对应的 `(候选槽位, 0)`。
+Server 在 Linux 回包的释义上补充显示字段 `annotation`：词性缩写与 `Sense::furigana` 生成的分段假名；
+Fcitx5 用它绘制候选注释，旧 Server 没有该字段时仍显示 `text`。这是 Linux v3 的可选字段，旧插件忽略它，不改公共协议。
+原始 `text` / `reading` 不变，Alt+数字仍由 Engine 上屏原始译文，生词标记与展示回报保持原样。
 隐藏、失焦、私密、无候选与过期回报不产生有效展示记录；Server 只凭已生成帧不记展示。
 
 组句期间插件每 80 ms 发一次 `Poll`（与 Windows DLL 的轮询间隔相同），Server 先 tick 再回当前帧。

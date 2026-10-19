@@ -148,6 +148,15 @@ pub struct Args {
     #[arg(long, requires = "mine_log")]
     pub mine_apply: bool,
 
+    /// 按读音核对用户词（配 --user-dict）：逐条列出读音与主词库对不上的用户词，只读、不写文件
+    #[arg(long, conflicts_with_all = ["mine_log", "replay", "eval_text", "eval_cold"])]
+    pub check_user_words: bool,
+
+    /// 把核对不过的用户词删掉并落盘（配 --check-user-words，落盘目标由 --user-dict 指定）；
+    /// 删完读回 user-words.tsv 核实，没删干净就报错退出
+    #[arg(long, requires = "check_user_words")]
+    pub purge_user_words: bool,
+
     /// 回放 / 整句评测时打印前 N 条没命中首选的例子
     #[arg(long, default_value_t = 20)]
     pub misses: usize,
@@ -179,7 +188,7 @@ pub struct Args {
     pub eval_details: Option<PathBuf>,
 
     /// 冷启动字词评测：读取 JSONL，不加载个人配置或个人学习文件
-    #[arg(long, requires = "cold_output", conflicts_with_all = ["user_dict", "config", "predict", "replay", "eval_text", "english_mode", "shuangpin", "wubi", "aux_table", "tune", "fuzzy", "inputs", "neural_async", "mine_log"])]
+    #[arg(long, requires = "cold_output", conflicts_with_all = ["user_dict", "config", "predict", "replay", "eval_text", "english_mode", "shuangpin", "wubi", "aux_table", "tune", "fuzzy", "inputs", "neural_async", "mine_log", "check_user_words"])]
     pub eval_cold: Option<PathBuf>,
 
     /// 冷启动逐词结果 JSONL（拒绝覆盖）

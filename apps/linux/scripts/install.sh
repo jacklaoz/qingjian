@@ -30,12 +30,31 @@ if command -v pkg-config >/dev/null 2>&1; then
     pkg-config --exists "$module" || missing+=("$module")
   done
 fi
+# 路径与 crates/bamboo-slip/src/fonts/linux.rs 的清单对应，改那边时同步这里。
+# 没有系统 UI 字体设置程序起不来，算缺依赖；中文与 emoji 字体缺了照样能起，只提示。
+any_file() {
+  local path
+  for path in "$@"; do [[ -f "$path" ]] && return 0; done
+  return 1
+}
+any_file /usr/share/fonts/truetype/noto/NotoSans-Regular.ttf /usr/share/fonts/noto/NotoSans-Regular.ttf \
+  '/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf' /usr/share/fonts/google-noto/NotoSans-Regular.ttf \
+  /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf /usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf \
+  /usr/local/share/fonts/noto/NotoSans-Regular.ttf /usr/local/share/fonts/dejavu/DejaVuSans.ttf \
+  || missing+=("系统 UI 字体（Noto Sans 或 DejaVu）")
+any_file /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc /usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc \
+  /usr/share/fonts/google-noto-sans-cjk-vf-fonts/NotoSansCJK-VF.ttc /usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc \
+  /usr/local/share/fonts/noto/NotoSansCJKsc-Regular.otf \
+  || echo '提示：没找到中文字体（Noto Sans CJK），设置程序里的中文会画不出来' >&2
+any_file /usr/share/fonts/truetype/noto/NotoColorEmoji.ttf /usr/share/fonts/noto/NotoColorEmoji.ttf \
+  /usr/share/fonts/google-noto-color-emoji-fonts/NotoColorEmoji.ttf /usr/local/share/fonts/noto/NotoColorEmoji.ttf \
+  || echo '提示：没找到 emoji 字体（Noto Color Emoji），表情会画不出来' >&2
 if ((${#missing[@]})); then
   echo "缺少依赖：${missing[*]}" >&2
   if $fcitx4; then
-    echo 'Debian / Ubuntu：sudo apt install cmake g++ pkg-config python3 libssl-dev fcitx-libs-dev libx11-dev libxres-dev nlohmann-json3-dev；Rust 见 https://rustup.rs' >&2
+    echo 'Debian / Ubuntu：sudo apt install cmake g++ pkg-config python3 libssl-dev fcitx-libs-dev libx11-dev libxres-dev nlohmann-json3-dev fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji；Rust 见 https://rustup.rs' >&2
   else
-    echo 'Debian / Ubuntu：sudo apt install cmake g++ pkg-config python3 libssl-dev libfcitx5core-dev libfcitx5utils-dev libfcitx5config-dev nlohmann-json3-dev；Rust 见 https://rustup.rs' >&2
+    echo 'Debian / Ubuntu：sudo apt install cmake g++ pkg-config python3 libssl-dev libfcitx5core-dev libfcitx5utils-dev libfcitx5config-dev nlohmann-json3-dev fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji；Rust 见 https://rustup.rs' >&2
     echo 'FreeBSD：pkg install bash cmake pkgconf python3 fcitx5 nlohmann-json rustup-init（rustup-init 装 Rust）' >&2
   fi
   exit 1

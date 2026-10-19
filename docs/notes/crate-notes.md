@@ -162,7 +162,7 @@ Engine 侧在 `engine/rescoring/`：接了打分器就取 Viterbi 前 `RESCORE_P
 那两处的门槛都按静态尺度定；按贝叶斯展开也只在同一串按键下可比。分走「(前文, 按键) + 文本 → 神经分」缓存 `NeuralCache`（两个条件任一变了整张作废）；
 按键取的是**当前这批 patterns 覆盖的字母**而不是整个作用域——英文尾巴那条只转换 head，拿整段当条件会让它凭空背上没覆盖的字母；
 同步打分器（`with_sentence_scorer`，CLI 评测）当场补分，
-异步的（`with_async_sentence_scorer`，后台线程 `RescoreWorker`）查询不等模型：缺分的记下来，壳停键后 `request_rescoring`、`poll_rescoring` 到了再 `query` 一次。
+异步的（`with_async_sentence_scorer`，后台线程 `RescoreWorker`）查询不等模型：缺分的记下来，壳停键后 `request_rescoring`、`poll_rescoring` 到了再 `query` 一次；`poll_rescoring` 只在最新那次请求的结果到了才返回 `true`（每次请求带序号，旧请求的结果照样进缓存），壳据此停轮询。
 前文优先用壳给的应用光标前文（`set_rescoring_context`），没有用本会话最近 64 个上屏字符。CLI `--neural <导出目录>`（`--neural-weight` / `--neural-context` / `--neural-async`）。
 
 P2C 教师强制打分 `CharScorer::score_p2c(keys, texts)`：前缀 `<eos> + 完整拼音 + <sep>`，只累加候选字符的 log 概率（不计 EOS），
@@ -282,6 +282,13 @@ Windows Server 自绘候选窗（GDI）按 `Frame.columns` / `column_ems` 画矩
 - `--mine-apply`（配 `--mine-log`）把清单里过阈值的**全拼**行（读音每段都是完整音节，判据是 Core 的 `parser::segment`）直接
   `Learner::learn_word` 并进用户词，**简拼**行单独列出等人工补全拼；是否落盘沿用 `--user-dict` 语义——给了就写回同目录
   `user-words.tsv`（保留已有的），不给只打印预演。不带 `--mine-apply` 单独跑一次本身已是清单预览。
+- `--check-user-words`（配 `--user-dict`）按读音核对用户词，抓历史遗留的错读音（云端学进来的 `我的 wo di` 这类）：
+  **读音不符**——词在词库里、存的读音不是词库给这个词的读音（正是词图「同文本不同读音顶掉整句候选」那一类）；
+  **读音可疑**——词库不认识这个词、但某个字按存的读音在词库里不是这个字的读音（与引擎学习闸门 `accepts_reading` 同口径，生僻字放行）。
+  主词库读音无调，逐字核对判不出「字有多音」（`的` 在 `di` 下本就合法），`我的哦 wo di e` 这种查不出来。加
+  `--purge-user-words` 时用 `Learner::forget` 删掉并落盘（同时清其选择次数、各输入串选择、个人 n-gram）；不带则只列。
+  `Learner::flush` 的契约是持久化失败只记日志、不返回错误，所以删完还要读回同目录的 `user-words.tsv` 核实，
+  要删的词仍在文件里就报错、以非零状态退出，不凭 `flush` 没吭声便报「已落盘」。
 - `--eval-text <文本>...` 装了码表（`--aux-table`）时多打一行码表覆盖率：词频前 10,000 与全库两段命中比例（与导入统计同源）。
 - `--eval-text <文本>...` 整句评测：把用户自己写的中文文本按标点切句、按词库读音转成全拼，冷启动喂给引擎看整句能不能还原原句
   （首选命中率 / 字准确率 / 查询耗时；不依赖日志里当时选了什么，给整句排序与语言模型的改动当尺子），`--eval-save` 冻结成 `句子\t拼音\t上文` 三列文件，
@@ -454,4 +461,5 @@ Windows 可选的 `[shortcut] toggle_punctuation` 经 `InputSettings` 下发，�
 
 Unix socket 用共享长度前缀与 Frame（当前公共版本 9，与 `PROTOCOL_VERSION` 同步，Fcitx5 插件里写死在 `qingjian.cpp` 的 OpenSession）；插件复用一条连接，每个上下文独立会话。Linux v3 扩展逐会话握手、确认 Sensitive/Password/Disable 后接受按下/释放、焦点和点击事实。
 候选回报绑定连接代次、上下文和服务端帧序号，仅当前聚焦页的有效释义进入 `note_displayed`，不把生成帧算作已展示。
+Linux 回包由 `dispatch/display/annotation` 给释义添加可选 `annotation`（词性与汉字段假名，`[general] translation_pos` 关掉时不带词性），Fcitx5 面板优先显示它；原始译文和快捷键提交不变，旧 Server 缺该字段时插件回退到 `text`。
 `[general] preedit` 使用已有 `both` / `inline` / `window`；没有新增 Linux 自绘配置。详见 [linux-fcitx5.md](linux-fcitx5.md)。

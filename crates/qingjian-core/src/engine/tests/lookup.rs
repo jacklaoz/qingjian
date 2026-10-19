@@ -499,3 +499,23 @@ fn option_arrows_move_the_cursor_by_syllable() {
     assert!(engine.move_cursor_syllable_right());
     assert_eq!(engine.composition().cursor(), "hello".len());
 }
+
+#[test]
+fn committing_the_rest_after_a_separator_split_consumes_it() {
+    // `shan'gou` 先选 闪，剩下 `'gou`；再选 购 要把它吃完，不能一直留着让空格反复上屏 购（#669）
+    let dictionary = "闪\tshan\t9000\n山沟\tshan gou\t8000\n购\tgou\t9000\n";
+    let mut engine = Engine::new(Dictionary::parse(dictionary).unwrap());
+    engine.set_input("shan'gou");
+    for text in ["闪", "购"] {
+        let candidate = engine
+            .query()
+            .unwrap()
+            .candidates
+            .items
+            .into_iter()
+            .find(|c| c.text == text)
+            .unwrap();
+        assert_eq!(engine.commit(&candidate), text);
+    }
+    assert!(engine.composition().is_empty());
+}

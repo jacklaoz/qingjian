@@ -50,6 +50,9 @@ pub struct RouterConfig {
 
     /// 翻译应用选区的修饰键与字母（`[shortcut] translate_selection`）。
     pub translate_selection: KeyCombo,
+
+    /// 译词旁显示词性（`[general] translation_pos`）。
+    pub translation_pos: bool,
 }
 
 impl RouterConfig {
@@ -84,6 +87,7 @@ impl From<&Config> for RouterConfig {
             },
             delete_keys: config.shortcut.delete_keys().into(),
             translate_selection: config.shortcut.translate_selection,
+            translation_pos: config.general.translation_pos,
         }
     }
 }

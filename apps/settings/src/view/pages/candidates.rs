@@ -62,8 +62,8 @@ pub fn candidates(ui: &mut Ui<Message>, page: &Page) -> Result<Vec<NodeId>, Rend
             .control(traditional)
             .build(ui, theme)?,
     ];
-    // 词性标注的接线目前只有 Windows 候选窗（#430）；macOS / Linux 候选行接上后再放开
-    if cfg!(target_os = "windows") {
+    // 词性标注的接线目前只有 Windows 候选窗（#430）与 Linux Fcitx5 面板；macOS 候选行接上后再放开
+    if cfg!(any(target_os = "windows", target_os = "linux")) {
         rows.push(
             toggle_info(
                 ui,
