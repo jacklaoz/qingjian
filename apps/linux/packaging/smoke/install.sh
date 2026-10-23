@@ -26,13 +26,13 @@ echo "插件：$so，缺库：$missing"
 [ -n "$so" ] && [ "$missing" = 0 ] || fail "fcitx5 插件不在或缺库"
 export XDG_RUNTIME_DIR=/tmp/run HOME=/root; mkdir -p $XDG_RUNTIME_DIR
 qingjian-linux-server >/tmp/server.out 2>&1 &
-for i in $(seq 1 60); do [ -S $XDG_RUNTIME_DIR/qingjian.sock ] && break; sleep 0.5; done
+for _ in $(seq 1 60); do [ -S $XDG_RUNTIME_DIR/qingjian.sock ] && break; sleep 0.5; done
 # --check 的日志与结果都在 stdout：只留「打了…」起的那几行，候选压成一行
 check=$(qingjian-linux-ibus --check nihao 2>&1) || fail "--check 出错：$(echo "$check" | tail -3)"
 echo "$check" | sed -n '/打了「/,$p' | tr -s ' \n' ' '; echo
 echo "$check" | grep -q '（没有候选）' && fail "打 nihao 没有候选（词库没找到？）"
 logs=/root/.local/state/qingjian/logs
-for i in $(seq 1 120); do grep -qs "本地整句模型已加载并预热\|本地整句模型加载失败\|没有本地整句模型文件" $logs/* && break; sleep 0.5; done
+for _ in $(seq 1 120); do grep -qs "本地整句模型已加载并预热\|本地整句模型加载失败\|没有本地整句模型文件" $logs/* && break; sleep 0.5; done
 model=$(grep -hs "本地整句模型" $logs/* | sed 's/\x1b\[[0-9;]*m//g' | grep -o '本地整句模型[^ ]*\|kind=[^ ]*' | tr '\n' ' ')
 echo "模型：${model:-没等到日志}"
 grep -qs "本地整句模型已加载并预热" $logs/* || fail "本地整句模型没加载上"

@@ -12,7 +12,6 @@
 # 设计与限制见 docs/notes/linux-packaging.md；打完用 smoke/run.sh 在几个发行版的干净容器里装一遍自检。
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)
-here="$root/apps/linux/packaging"
 work="$root/target/linux-pkg"
 out="$work/out"
 formats=("$@")
@@ -91,12 +90,11 @@ stage_core() {
 
 build_deb() {
   echo '==> deb（Debian 13）'
-  local tag stage="$work/deb" core fcitx
+  local tag stage="$work/deb" core
   tag=$(image deb 'FROM debian:trixie
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake g++ make pkg-config dpkg-dev file libfcitx5core-dev libfcitx5utils-dev libfcitx5config-dev nlohmann-json3-dev && rm -rf /var/lib/apt/lists/*')
   rm -rf "$stage"
   core="$stage/qingjian"
-  fcitx="$stage/qingjian-fcitx5"
   stage_core "$core"
   install -Dm644 "$root/LICENSE" "$core/usr/share/doc/qingjian/copyright"
   in_container "$tag" DEB_VERSION="$deb_version" bash /src/apps/linux/packaging/deb/assemble.sh
