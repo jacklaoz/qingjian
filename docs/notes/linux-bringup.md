@@ -170,6 +170,21 @@ postinst / postrm 调 `ibus write-cache --system` 让 ibus 重扫。
   随包数据落在 `/app/share/qingjian`（`resources` 的系统布局里加了这条）、
   用户数据进 `~/.var/app/<id>/`，与 `.deb` 装的那份不互通。
 
+- **组句打到一半换输入框**（2026-10-15，评审时报的）：原先在 `FocusOut` 里请 Server 把缓冲原样上屏、
+  自己发 `CommitText`。IBus 的引擎对象在各输入框之间共用，daemon 调完 `FocusOut` 不等回就把引擎挂到下一个框，
+  这条信号到的时候已经晚了：X11 上拼音打进了新框，GNOME Wayland 上两边都没有。改了两处：
+  - preedit 用 `IBUS_ENGINE_PREEDIT_COMMIT` 发、`FocusOut` 报 `client_preedit = true`（Fcitx5 插件那套），
+    失焦时由框架当场交给原来的框。**这只管用在 X11**（GTK 输入模块一个输入框一个上下文）。
+  - **GNOME Wayland 上失焦时交什么都晚了**：应用自己先挪焦点（Ctrl+F 打开搜索条），gnome-shell 之后才对上下文
+    `Reset` → `FocusOut` → `FocusIn`，它按 COMMIT 模式交出的 preedit 落进了新框（总线上一条 `CommitText` 都没有，
+    是 gnome-shell / mutter 自己交的；`gresource extract` 出 `inputMethod.js` 的 `vfunc_focus_out` 看得到）。
+    唯一来得及的时机是快捷键交给应用之前：组句中带 Ctrl / Alt / Super、Server 放行的键，前端先
+    `Deactivate` 原样上屏再放行，`CommitText` 在 `ProcessKeyEvent` 返回之前发出，比按键先到应用——与 macOS 在应用处理
+    快捷键前 `commitComposition` 的结果一样。鼠标点到别的框没有这样的时机，Wayland 上拼音会丢，写进了 `keys.md`。
+  - 排查办法：`dbus-monitor --address "$(ibus address)"` 能旁听 IBus 总线（不支持新式 monitor，会退回 eavesdrop），
+    事件先后一眼就看见。端到端测试 `pinyin_stays_in_the_old_box_when_focus_moves` 与
+    `shortcut_commits_pinyin_before_reaching_the_app` 对着私有 daemon 钉住这两处。
+
 ## 还没做的
 
 - ~~**`.rpm`**~~：当天卡在「没有能验的环境」，2026-09-16 用 docker 解决了——构建与验证都在 fedora

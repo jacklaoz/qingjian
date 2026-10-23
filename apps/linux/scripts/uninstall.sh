@@ -25,4 +25,4 @@ python3 "$(dirname -- "${BASH_SOURCE[0]}")/files.py" uninstall "$install_prefix"
 command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload || true
 # IBus 的注册表缓存不跟 IBUS_COMPONENT_PATH 走（见 install.sh），一并删掉让它重建
 rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/ibus/bus/registry"
-echo '卸载完成；用户数据已保留。fcitx5 重启一下、IBus 要重新登录一次（组件路径是会话启动时读的）才会忘掉这份青简。'
+echo '卸载完成；用户数据已保留。正在用的 Fcitx（fcitx5 / fcitx4）重启一下、IBus 要重新登录一次（组件路径是会话启动时读的）才会忘掉这份青简。'

@@ -2,6 +2,7 @@
 //! 只重设启动时会应用的那些项；便宜的无条件重设，本地模型 / 释义表 / 附加词库按配置变化重建，
 //! 用户 `dicts/` 目录的文件增删也跟着重装。拼音显示位置在会话握手时交给插件，改了要重启服务。
 
+mod cloud;
 mod state;
 
 #[cfg(test)]
@@ -44,6 +45,7 @@ impl Router {
             dictionary_files: Vec::new(),
             applied_dictionaries: config.dictionaries.clone(),
             applied_model: config.model.clone(),
+            applied_predict: config.predict.clone(),
             applied_language: assembly::learning_language(config),
         };
         reload.dictionary_files = reload.dict_snapshot();
@@ -85,6 +87,10 @@ impl Router {
         self.engine.set_shuangpin(config.general.shuangpin());
         self.engine
             .set_shuangpin_raw_preedit(config.general.shuangpin_raw_preedit);
+        self.engine
+            .set_hold_selections(config.general.hold_selections);
+        self.engine
+            .set_context_memory(config.model.context_memory_seconds);
         self.engine.set_zhuyin_mode(config.general.is_zhuyin());
         self.engine
             .set_shift_letter_compose(config.general.shift_letter.compose());
@@ -96,6 +102,7 @@ impl Router {
             .set_kaomoji_limit(usize::from(config.general.kaomoji.get()));
         self.engine
             .set_symbol_limit(usize::from(config.general.symbols.get()));
+        self.engine.set_traditional(config.general.traditional());
         self.engine.set_mode_keys(config.shortcut.mode);
         if let Err(error) = self
             .engine
@@ -105,10 +112,22 @@ impl Router {
         }
         self.config = RouterConfig::from(config);
         self.config.page_size = self.config.page_size.clamp(1, 9);
+        if !self.config.english_mode {
+            for info in self.sessions.values_mut() {
+                info.english = false;
+            }
+        }
 
         let Some(mut reload) = self.reload.take() else {
             return;
         };
+        if config.predict != reload.applied_predict {
+            self.reload_cloud(&config.predict);
+            reload.applied_predict = config.predict.clone();
+        }
+        if !self.engine.prediction_enabled() {
+            self.config.cloud_slots = 0;
+        }
         if config.model != reload.applied_model {
             self.apply_model_config(&config.model);
             reload.applied_model = config.model.clone();

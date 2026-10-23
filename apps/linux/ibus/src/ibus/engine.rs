@@ -19,9 +19,13 @@ use crate::client::{Connection, Reply, Shared};
 use crate::error::IbusError;
 use crate::key;
 
-/// `UpdatePreeditText` 的 `mode`：焦点移走时把 preedit 清掉（ibus 的 `IBUS_ENGINE_PREEDIT_CLEAR`）。
-/// 青简在 `FocusOut` 里自己把缓冲原样上屏，不靠 ibus 替它提交，所以是 CLEAR 不是 COMMIT。
+/// `UpdatePreeditText` 的 `mode`（ibus 的 `IBusPreeditFocusMode`）：空 preedit 用 CLEAR。
 const PREEDIT_CLEAR: u32 = 0;
+
+/// 有内容的 preedit 用 COMMIT：焦点移走时由 ibus-daemon（Wayland 下是 gnome-shell）当场把它交给原来的框。
+/// 不能在 `FocusOut` 里自己发 `CommitText`：引擎对象在各输入框之间共用，信号到达时已经挂到新框上了，
+/// X11 上拼音进了新框，Wayland 上两边都没有。
+const PREEDIT_COMMIT: u32 = 1;
 
 /// `SetContentType` 的 purpose：密码框与 PIN（`IBusInputPurpose`）。
 const PURPOSE_PASSWORD: u32 = 8;
@@ -43,7 +47,7 @@ pub(crate) async fn present_frame(
             .await?;
     } else {
         let text = variant::segmented_text(&view.preedit);
-        IBusEngine::update_preedit_text(emitter, text, view.cursor, true, PREEDIT_CLEAR).await?;
+        IBusEngine::update_preedit_text(emitter, text, view.cursor, true, PREEDIT_COMMIT).await?;
         IBusEngine::show_preedit_text(emitter).await?;
     }
 
@@ -135,6 +139,11 @@ impl IBusEngine {
     ///
     /// 抬键也要报上去：中 / 英切换认的是 Shift 的**抬起**（`[shortcut] switch_mode`），
     /// 在这里就地放行的话那个键永远不会生效。吃不吃掉仍由 Server 说了算。
+    ///
+    /// 组句中按下的 Ctrl / Alt / Super 组合键 Server 不处理、交给应用时，先把拼音原样上屏再放行：
+    /// GNOME Wayland 上应用收到 Ctrl+F 这类键会先自己挪焦点，gnome-shell 之后才通知输入法，
+    /// 那时再交出 preedit 已经落到新框或丢掉了。上屏信号在这个方法返回之前发出，比按键先到应用，
+    /// 与 macOS 在应用处理快捷键前 `commitComposition` 的结果一致。
     async fn process_key_event(
         &mut self,
         keyval: u32,
@@ -144,9 +153,23 @@ impl IBusEngine {
     ) -> bool {
         let release = key::is_release(state);
         let event = key::to_key_event(keyval, state);
+        let shortcut = !release && event.modifiers.has_command_key();
         let consumed = self
             .apply(&emitter, "按键", |connection, session| {
-                connection.key(session, event, release)
+                let reply = connection.key(session, event, release)?;
+                if !shortcut
+                    || reply.outcome != KeyOutcome::Passthrough
+                    || reply.frame.preedit.is_empty()
+                {
+                    return Ok(reply);
+                }
+                let flushed = connection.deactivate(session, false, false, false)?;
+                // Deactivate 把会话标成不活跃，焦点其实还在这个框里
+                connection.focus(session, true)?;
+                Ok(Reply {
+                    outcome: KeyOutcome::Passthrough,
+                    ..flushed
+                })
             })
             .await;
         // 排错时要看的是**事件之间的交错**（焦点、能力、按键谁先谁后），少了这一条就只能靠猜
@@ -163,15 +186,14 @@ impl IBusEngine {
         .await;
     }
 
-    /// 焦点离开：缓冲原样上屏，与 macOS 的 `commitComposition`、Windows 的 `Commit` 一致。
+    /// 焦点离开：显示着的拼音留在原来的框里，由框架按 [`PREEDIT_COMMIT`] 提交。
     ///
-    /// `client_preedit` 报 `false`：报 `true` 的话 Server 会把缓冲丢掉不上屏（那是给「应用自己画
-    /// preedit」的场合留的），而走 IBus 这条路时缓冲里的字母该原样交给应用——
-    /// 这是 IBus 那版真机验过的行为，换成 `true` 之前要在真机上确认。
+    /// `client_preedit` 报 `true`，Server 只清缓冲不上屏，与 Fcitx5 插件应用自己画 preedit 时一致；
+    /// 报 `false` 的话会再上屏一次，落到新框里。
     async fn focus_out(&mut self, #[zbus(signal_emitter)] emitter: SignalEmitter<'_>) {
         tracing::debug!(context = %self.context, "焦点离开，结束组句");
         self.apply(&emitter, "焦点离开", |connection, session| {
-            connection.deactivate(session, true, false, false)
+            connection.deactivate(session, true, true, false)
         })
         .await;
     }

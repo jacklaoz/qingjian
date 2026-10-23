@@ -8,6 +8,8 @@
 //!
 //! **缺哪样都跳过**：CI 的 Linux runner 上没有 ibus-daemon，这个测试直接返回。
 
+#![cfg(target_os = "linux")]
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -36,6 +38,7 @@ trait InputContext {
     fn set_capabilities(&self, capabilities: u32) -> zbus::Result<()>;
     fn set_engine(&self, name: &str) -> zbus::Result<()>;
     fn focus_in(&self) -> zbus::Result<()>;
+    fn focus_out(&self) -> zbus::Result<()>;
     fn process_key_event(&self, keyval: u32, keycode: u32, state: u32) -> zbus::Result<bool>;
 }
 
@@ -65,6 +68,10 @@ const KEY_H: u32 = 43;
 const KEY_A: u32 = 38;
 const KEY_O: u32 = 32;
 const KEY_SPACE: u32 = 65;
+const KEY_F: u32 = 41;
+
+/// `IBusModifierType` 的 Ctrl 位。
+const CONTROL: u32 = 1 << 2;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn typing_pinyin_reaches_the_panel_and_commits() {
@@ -171,6 +178,177 @@ async fn typing_pinyin_reaches_the_panel_and_commits() {
         .unwrap_or_else(|| panic!("上屏的该是 你好；收到的是 {}", collected.summary()));
 }
 
+/// 组句打到一半焦点挪到另一个输入框：拼音要留在原来那个框里，新框里什么都不该进。
+///
+/// GNOME 缺省开着 global-engine，一个引擎对象在各输入上下文之间挪。引擎在 `FocusOut` 里自己发
+/// `CommitText` 的话，信号到 daemon 时引擎已经挂到新框上了（X11 上拼音进了新框，Wayland 上两边都没有）；
+/// 所以 preedit 用 `IBUS_ENGINE_PREEDIT_COMMIT` 发，失焦时由 daemon 当场交给原来的框。
+#[tokio::test(flavor = "multi_thread")]
+async fn pinyin_stays_in_the_old_box_when_focus_moves() {
+    if std::env::var_os("QINGJIAN_IBUS_TEST").is_none() {
+        eprintln!("跳过：没设 QINGJIAN_IBUS_TEST=1（它会动当前会话的输入法并写进真实学习数据）");
+        return;
+    }
+    let Some(address) = bus_address() else {
+        eprintln!("跳过：本机没有跑 ibus-daemon");
+        return;
+    };
+    let connection = Builder::address(address.as_str())
+        .expect("IBus 地址")
+        .build()
+        .await
+        .expect("连上 IBus");
+    let bus = IBusProxy::new(&connection).await.expect("IBus 门面");
+    let (old, old_signals) = open_context(&connection, &bus, "qingjian-focus-old").await;
+    let (new, new_signals) = open_context(&connection, &bus, "qingjian-focus-new").await;
+
+    if let Err(per_context) = old.set_engine("qingjian").await
+        && let Err(global) = bus.set_global_engine("qingjian").await
+    {
+        eprintln!("跳过：切不到 qingjian 引擎（按上下文：{per_context}；全局：{global}）");
+        return;
+    }
+    old.focus_in().await.expect("旧框拿焦点");
+    // 等引擎激活完，理由同上一个测试
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    for (keyval, keycode) in [
+        ('n', KEY_N),
+        ('i', KEY_I),
+        ('h', KEY_H),
+        ('a', KEY_A),
+        ('o', KEY_O),
+    ] {
+        let consumed = old
+            .process_key_event(keyval as u32, keycode, 0)
+            .await
+            .expect("按键送达");
+        assert!(consumed, "拼音字母该被吃掉：{keyval}");
+    }
+    old_signals
+        .wait_for("UpdatePreeditText", "ni")
+        .await
+        .unwrap_or_else(|| panic!("preedit 里该有 ni；收到的是 {}", old_signals.summary()));
+
+    // GTK 换焦点的顺序：旧框先失焦，新框再拿焦点
+    old.focus_out().await.expect("旧框失焦");
+    new.focus_in().await.expect("新框拿焦点");
+
+    old_signals
+        .wait_for("CommitText", "ni")
+        .await
+        .unwrap_or_else(|| panic!("拼音该留在旧框；旧框收到 {}", old_signals.summary()));
+    // 给错投的信号留出到达的时间，再看新框
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(
+        old_signals.count("CommitText"),
+        1,
+        "旧框只该上屏一次：{}",
+        old_signals.summary()
+    );
+    assert_eq!(
+        new_signals.count("CommitText"),
+        0,
+        "新框不该收到上屏：{}",
+        new_signals.summary()
+    );
+    new.focus_out().await.ok();
+}
+
+/// 组句中按 Ctrl+F：键照样交给应用，拼音先原样上屏到当前框。
+///
+/// GNOME Wayland 上应用收到快捷键会先自己挪焦点，失焦时再交 preedit 就落到新框了（真机上见过），
+/// 所以要在按键方法返回之前上屏。
+#[tokio::test(flavor = "multi_thread")]
+async fn shortcut_commits_pinyin_before_reaching_the_app() {
+    if std::env::var_os("QINGJIAN_IBUS_TEST").is_none() {
+        eprintln!("跳过：没设 QINGJIAN_IBUS_TEST=1（它会动当前会话的输入法并写进真实学习数据）");
+        return;
+    }
+    let Some(address) = bus_address() else {
+        eprintln!("跳过：本机没有跑 ibus-daemon");
+        return;
+    };
+    let connection = Builder::address(address.as_str())
+        .expect("IBus 地址")
+        .build()
+        .await
+        .expect("连上 IBus");
+    let bus = IBusProxy::new(&connection).await.expect("IBus 门面");
+    let (context, signals) = open_context(&connection, &bus, "qingjian-shortcut").await;
+    if let Err(per_context) = context.set_engine("qingjian").await
+        && let Err(global) = bus.set_global_engine("qingjian").await
+    {
+        eprintln!("跳过：切不到 qingjian 引擎（按上下文：{per_context}；全局：{global}）");
+        return;
+    }
+    context.focus_in().await.expect("拿焦点");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    for (keyval, keycode) in [
+        ('n', KEY_N),
+        ('i', KEY_I),
+        ('h', KEY_H),
+        ('a', KEY_A),
+        ('o', KEY_O),
+    ] {
+        let consumed = context
+            .process_key_event(keyval as u32, keycode, 0)
+            .await
+            .expect("按键送达");
+        assert!(consumed, "拼音字母该被吃掉：{keyval}");
+    }
+    signals
+        .wait_for("UpdatePreeditText", "ni")
+        .await
+        .unwrap_or_else(|| panic!("preedit 里该有 ni；收到的是 {}", signals.summary()));
+
+    let consumed = context
+        .process_key_event('f' as u32, KEY_F, CONTROL)
+        .await
+        .expect("按键送达");
+    assert!(!consumed, "Ctrl+F 该交给应用");
+    signals
+        .wait_for("CommitText", "nihao")
+        .await
+        .unwrap_or_else(|| panic!("拼音该先原样上屏；收到的是 {}", signals.summary()));
+    context.focus_out().await.ok();
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(
+        signals.count("CommitText"),
+        1,
+        "只该上屏一次：{}",
+        signals.summary()
+    );
+}
+
+/// 建一个输入上下文，声明能力并开始收它的信号。
+async fn open_context<'a>(
+    connection: &zbus::Connection,
+    bus: &IBusProxy<'a>,
+    name: &str,
+) -> (InputContextProxy<'a>, Collected) {
+    let path = bus.create_input_context(name).await.expect("建输入上下文");
+    let rule = MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .path(path.as_ref())
+        .expect("按上下文路径过滤")
+        .build();
+    let signals = MessageStream::for_match_rule(rule, connection, Some(4096))
+        .await
+        .expect("订阅信号");
+    let collected = Collected::spawn(signals);
+    let context = InputContextProxy::builder(connection)
+        .path(path)
+        .expect("上下文路径")
+        .build()
+        .await
+        .expect("上下文代理");
+    context
+        .set_capabilities(CAPABILITIES)
+        .await
+        .expect("声明能力");
+    (context, collected)
+}
+
 /// 订阅后立刻起一条任务把信号全收下来，测试再从收到的里面找。
 ///
 /// 不能边断言边拉流：zbus 的信号流是有界广播，连发几次按键期间没人消费就会丢最旧的消息，
@@ -218,6 +396,16 @@ impl Collected {
             .iter()
             .find(|(member, payload)| member == name && payload.contains(needle))
             .map(|(_, payload)| payload.clone())
+    }
+
+    /// 名字对得上的信号收到了几条。
+    fn count(&self, name: &str) -> usize {
+        self.seen
+            .lock()
+            .expect("信号表")
+            .iter()
+            .filter(|(member, _)| member == name)
+            .count()
     }
 
     /// 失败时打出来的现场：收到过哪些信号。

@@ -2,7 +2,9 @@
 
 mod state;
 
-use qingjian_core::{Candidate, CandidateKind, CandidateLayout, CandidateList};
+use qingjian_core::{
+    Candidate, CandidateKind, CandidateLayout, CandidateList, CloudWord, Query, SurroundingText,
+};
 use qingjian_platform::protocol::{Frame, PreeditKind, PreeditSegment};
 
 pub(super) use self::state::Composed;
@@ -10,34 +12,38 @@ use super::Router;
 
 impl Router {
     /// 缓冲变化后：按 Engine 状态重建 [`Composed`]，发一次云联想请求，归零高亮与整句补全。
-    pub(super) fn recompose(&mut self) {
+    pub(super) fn recompose(&mut self, surrounding: Option<SurroundingText>) {
         self.highlight = 0;
         self.navigated = false;
         self.sentence = None;
         if self.engine.composition().is_empty() {
             self.composed = None;
+            self.engine.cancel_prediction();
             self.stop_rescoring();
             return;
         }
         self.attach_loaded_model();
-        let built = self.engine.query().ok().map(|query| {
-            let items = query.candidates.items.clone();
-            let preedit: Vec<PreeditSegment> =
-                query.marked_segments().iter().map(Into::into).collect();
-            // 光标用 Core 的映射：自动补的 `'` 会让显示串比敲的长。
-            (items, preedit, query.marked_cursor())
+        let built = self.engine.query().ok().map(|mut query| {
+            let items = std::mem::take(&mut query.candidates.items);
+            let (preedit, cursor) = marked_parts(&query);
+            (items, preedit, cursor, Box::new(query))
         });
         self.composed = Some(match built {
-            Some((items, preedit, cursor)) => {
+            Some((items, preedit, cursor, spelling)) => {
                 let layout =
                     CandidateLayout::new(items, self.config.page_size, self.config.cloud_slots);
+                if self.prediction_context_active() {
+                    self.engine.request_prediction(surrounding, layout.local());
+                }
                 Composed::Candidates {
                     preedit,
                     cursor,
                     layout,
+                    spelling,
                 }
             }
             None => {
+                self.engine.cancel_prediction();
                 let composition = self.engine.composition();
                 let text = composition.text().to_owned();
                 let cursor = text[..composition.cursor()].chars().count();
@@ -48,6 +54,56 @@ impl Router {
             .find(|&index| self.layout_candidate(index).is_some())
             .unwrap_or(0);
         self.schedule_rescoring();
+    }
+
+    /// 已挂起的会话重新获得焦点时，异步请求已经作废；按当前本地候选补发。
+    pub(super) fn request_current_prediction(&mut self) {
+        if !self.prediction_context_active() {
+            return;
+        }
+        if let Some(Composed::Candidates { layout, .. }) = &self.composed {
+            self.engine.request_prediction(None, layout.local());
+        }
+    }
+
+    /// 只补第一页末尾尚未被用户选中的格；整句补全仍可单独显示。
+    pub(super) fn poll_prediction(&mut self) {
+        if !self.prediction_context_active() {
+            return;
+        }
+        let Some(prediction) = self.engine.poll_prediction() else {
+            return;
+        };
+        if let Some(job) = self.translation.as_mut() {
+            if let Some(text) = prediction.sentence {
+                job.result = Some(text);
+            } else {
+                self.end_translation();
+            }
+            return;
+        }
+        let Some(Composed::Candidates { layout, .. }) = self.composed.as_mut() else {
+            return;
+        };
+        if self.highlight < self.config.page_size
+            && (layout.local().is_empty()
+                || self.highlight < self.config.page_size.saturating_sub(layout.capacity()))
+        {
+            layout.set_cloud(
+                prediction
+                    .words
+                    .into_iter()
+                    .map(CloudWord::into_candidate)
+                    .collect(),
+            );
+        }
+        self.sentence = prediction.sentence;
+    }
+
+    fn prediction_context_active(&self) -> bool {
+        self.focused
+            .and_then(|session| self.sessions.get(&session))
+            .is_some_and(|info| info.active && !info.private)
     }
 
     /// 高亮移动 `delta`，夹在 `[0, 末尾]`，到页边自然换页。
@@ -123,6 +179,9 @@ impl Router {
 
     /// 按当前状态生成一帧：翻译评审优先；没在组句给空帧；否则给高亮所在的那一页。
     pub(super) fn current_frame(&self) -> Frame {
+        if self.translation.is_some() {
+            return self.translation_frame();
+        }
         match &self.composed {
             None => Frame::default(),
             Some(Composed::Raw { text, cursor }) => Frame {
@@ -131,14 +190,18 @@ impl Router {
                     kind: PreeditKind::Typed,
                 }],
                 cursor: *cursor,
+                window_preedit: None,
                 preedit_mode: self.config.preedit,
                 candidates: CandidateList { items: Vec::new() },
                 highlight: usize::MAX,
                 page: 0,
                 page_count: 1,
                 layout: self.config.layout,
+                columns: 0,
+                column_ems: Vec::new(),
                 appearance: self.config.appearance,
                 aux_code_show: false,
+                translation_pos: self.config.translation_pos,
                 sentence: None,
                 notice: self.notice.clone(),
                 symbol_panel: false,
@@ -147,9 +210,19 @@ impl Router {
                 preedit,
                 cursor,
                 layout,
+                spelling,
             }) => {
                 let page_size = self.config.page_size;
                 let highlight = self.highlight.min(layout.len().saturating_sub(1));
+                // 高亮候选的读音切法与首选不同（`ganga` 的 尴尬 / 刚啊）：拼音行按它重切
+                let candidate = layout.candidate(highlight);
+                let (preedit, cursor) = if spelling.spelling_of(candidate) == spelling.spelled {
+                    (preedit.clone(), *cursor)
+                } else {
+                    let mut followed = (**spelling).clone();
+                    followed.follow(candidate);
+                    marked_parts(&followed)
+                };
                 let page = highlight / page_size;
                 let items: Vec<Candidate> = layout
                     .page(page)
@@ -169,16 +242,20 @@ impl Router {
                 let mut candidates = CandidateList { items };
                 self.engine.annotate(&mut candidates);
                 Frame {
-                    preedit: preedit.clone(),
-                    cursor: *cursor,
+                    preedit,
+                    cursor,
+                    window_preedit: None,
                     preedit_mode: self.config.preedit,
                     candidates,
                     highlight: highlight - page * page_size,
                     page,
                     page_count: layout.pages().max(1),
                     layout: self.config.layout,
+                    columns: 0,
+                    column_ems: Vec::new(),
                     appearance: self.config.appearance,
                     aux_code_show: false,
+                    translation_pos: self.config.translation_pos,
                     sentence: self.sentence.clone(),
                     notice: self.notice.clone(),
                     symbol_panel: false,
@@ -186,4 +263,12 @@ impl Router {
             }
         }
     }
+}
+
+/// 一次查询的拼音行分段与光标。光标用 Core 的映射：自动补的 `'` 会让显示串比敲的长。
+pub(super) fn marked_parts(query: &Query) -> (Vec<PreeditSegment>, usize) {
+    (
+        query.marked_segments().iter().map(Into::into).collect(),
+        query.marked_cursor(),
+    )
 }

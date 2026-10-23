@@ -9,17 +9,32 @@
 //!
 //! 真机上的坑记在 `docs/notes/linux-bringup.md`。
 
+#[cfg(target_os = "linux")]
 mod client;
+#[cfg(target_os = "linux")]
 mod error;
+#[cfg(target_os = "linux")]
 mod ibus;
+#[cfg(target_os = "linux")]
 mod key;
 
+#[cfg(target_os = "linux")]
 use qingjian_platform::protocol::linux::{Capabilities, socket_path};
 
+#[cfg(target_os = "linux")]
 use client::Shared;
+#[cfg(target_os = "linux")]
 use error::IbusError;
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    run();
+    #[cfg(not(target_os = "linux"))]
+    eprintln!("qingjian-linux-ibus 仅支持 Linux");
+}
+
+#[cfg(target_os = "linux")]
+fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
@@ -66,6 +81,7 @@ fn main() {
 /// **不在这里连 Server**：连接是按输入上下文懒建的（见 `client::Shared`），
 /// Server 晚起、中途重启都不该让引擎进程起不来或者退出——ibus-daemon 拉起我们的时机
 /// 比用户起 Server 早得多。
+#[cfg(target_os = "linux")]
 fn serve() -> Result<(), zbus::Error> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -86,6 +102,7 @@ fn serve() -> Result<(), zbus::Error> {
 /// 自检：连上 Server、开一个会话、把 `typed` 里的字母逐个当按键报上去，打印最后一帧的候选。
 ///
 /// 这条路走通就说明前端这一侧的协议是对的——**IBus 还没接进来的时候，它是唯一能端到端验的东西**。
+#[cfg(target_os = "linux")]
 fn check(typed: &str) -> Result<(), IbusError> {
     let shared = Shared::default();
     tracing::info!(socket = %socket_path().display(), "连 Server");
