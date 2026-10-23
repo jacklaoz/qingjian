@@ -1,8 +1,8 @@
-//! Linux 本地输入服务启动入口；云服务在首版保持关闭，本地整句模型按 `[model]` 开关在后台加载，之后改配置由热加载应用。
-#[cfg(target_os = "linux")]
+//! Linux 本地输入服务；云联想与本地模型按配置加载，之后改配置由热加载应用。
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 mod paths;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     use qingjian_core::Language;
     use qingjian_linux_server::{
@@ -69,6 +69,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     engine.set_fuzzy(config.fuzzy);
     engine.set_shuangpin(config.general.shuangpin());
     engine.set_shuangpin_raw_preedit(config.general.shuangpin_raw_preedit);
+    engine.set_hold_selections(config.general.hold_selections);
+    engine.set_context_memory(config.model.context_memory_seconds);
     engine.set_zhuyin_mode(config.general.is_zhuyin());
     engine.set_shift_letter_compose(config.general.shift_letter.compose());
     engine.set_learning(config.general.learning);
@@ -82,6 +84,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     engine
         .set_custom_phrases(config.custom_phrases.clone())
         .map_err(std::io::Error::other)?;
+    assembly::attach_cloud(&mut engine, &config.predict);
     engine.log_session(env!("CARGO_PKG_VERSION"), "linux");
     let mut router = Router::new(engine, RouterConfig::from(&config));
     router.configure_local_model(find_model(Some(&user_dir), &root), &config.model);
@@ -99,11 +102,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 fn main() {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     if let Err(error) = run() {
         eprintln!("青简启动失败：{error}");
         std::process::exit(1);
     }
-    #[cfg(not(target_os = "linux"))]
-    eprintln!("qingjian-linux-server 仅支持 Linux");
+    #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+    eprintln!("qingjian-linux-server 仅支持 Linux 与 FreeBSD");
 }

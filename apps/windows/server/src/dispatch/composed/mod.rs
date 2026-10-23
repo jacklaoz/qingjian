@@ -3,9 +3,10 @@
 mod sentence_translation;
 mod state;
 
+use qingjian_core::candidate::arrows::{Focus, Matrix};
 use qingjian_core::{
-    Candidate, CandidateKind, CandidateLayout, CandidateList, CloudWord, Language, Query, Sense,
-    SurroundingText, Translation,
+    Candidate, CandidateKind, CandidateLayout, CandidateList, Cell, CloudWord, Engine, GRID_ROWS,
+    Grid, Language, Query, Sense, SurroundingText, Translation,
 };
 use qingjian_platform::protocol::{Frame, PROTOCOL_VERSION, PreeditKind, PreeditSegment};
 
@@ -26,8 +27,10 @@ impl Router {
             });
         self.highlight = 0;
         self.navigated = false;
+        self.grid = None;
         self.sentence = None;
         if self.engine.composition().is_empty() {
+            self.focus = Focus::default();
             // 清空时也要撤掉 worker 中的待发请求，避免无用请求占掉最短间隔。
             self.engine.cancel_prediction();
             self.composed = None;
@@ -36,12 +39,13 @@ impl Router {
         }
         self.engine.cancel_composition_prediction();
         self.attach_loaded_model();
-        let built = self.engine.query().ok().map(|query| {
+        let built = self.engine.query().ok().map(|mut query| {
             let (preedit, cursor, typed_keys) = marked_parts(&query);
-            (query.candidates.items.clone(), preedit, cursor, typed_keys)
+            let items = std::mem::take(&mut query.candidates.items);
+            (items, preedit, cursor, typed_keys, Box::new(query))
         });
         self.composed = Some(match built {
-            Some((items, preedit, cursor, typed_keys)) => {
+            Some((items, preedit, cursor, typed_keys, spelling)) => {
                 let layout =
                     CandidateLayout::new(items, self.config.page_size, self.config.cloud_slots);
                 if self.config.cloud_enabled && self.engine.prediction_enabled() {
@@ -78,6 +82,7 @@ impl Router {
                     cursor,
                     typed_keys,
                     layout,
+                    spelling,
                     sentence_translation,
                     manual_sequence: None,
                 }
@@ -266,8 +271,14 @@ impl Router {
         self.highlight = next;
     }
 
-    /// 整页翻 `step`，高亮落到目标页第一个候选。
+    /// 整页翻 `step`，高亮落到目标页第一个候选；矩阵展开着时一次翻一屏（与 macOS 壳的 `turn_page` 一致）。
     pub(super) fn page(&mut self, step: isize) {
+        if self.grid.is_some() {
+            if self.move_screens(step) {
+                self.engine.note_page_turn();
+            }
+            return;
+        }
         let count = self.candidate_count();
         if count == 0 {
             self.highlight = 0;
@@ -289,6 +300,83 @@ impl Router {
         let page_count = self.candidate_count().div_ceil(self.config.page_size) as isize;
         let target = (self.highlight / self.config.page_size) as isize + step;
         (0..page_count).contains(&target)
+    }
+
+    /// 横排矩阵：上 / 下键竖着移 `delta` 行（列不变，目标格没候选就取最近的）；还是单行就先从当前页展开
+    /// （展开本身算变化）。返回高亮是否真的动了。
+    pub(super) fn move_rows(&mut self, delta: isize) -> bool {
+        let expanding = self.grid.is_none();
+        self.shift_grid_rows(delta) || expanding
+    }
+
+    /// 矩阵里顶在第一排还往上：高亮回到第一个候选、视口滚回顶部。返回是否动了。
+    pub(super) fn jump_to_first(&mut self) -> bool {
+        let Some(Composed::Candidates { layout, .. }) = &self.composed else {
+            return false;
+        };
+        if self.grid.is_none() || self.highlight == 0 {
+            return false;
+        }
+        self.highlight = 0;
+        self.grid = Some(Grid::at(layout, 0));
+        self.navigated = true;
+        true
+    }
+
+    /// 给 `arrows::route` 的矩阵状态：没开「横排时展开成多行」、单行、展开后高亮在不在第一行。
+    pub(super) fn matrix(&self) -> Matrix {
+        match self.grid {
+            Some(_) => Matrix::Open {
+                first_row: self.highlight < self.config.page_size,
+            },
+            None if self.config.grid_keys() => Matrix::Closed,
+            None => Matrix::Off,
+        }
+    }
+
+    /// 矩阵里按阅读顺序移一格（越过行尾到下一行开头），跳过空位；没展开时不动。返回是否动了。
+    pub(super) fn move_cells(&mut self, delta: isize) -> bool {
+        let Some(Composed::Candidates { layout, .. }) = &self.composed else {
+            return false;
+        };
+        let Some(mut grid) = self.grid else {
+            return false;
+        };
+        let moved = grid.move_cells(layout, self.highlight, delta);
+        self.grid = Some(grid);
+        self.land(moved)
+    }
+
+    /// 矩阵里整屏翻（翻页键）：一次 [`GRID_ROWS`] 行。返回是否动了。
+    pub(super) fn move_screens(&mut self, delta: isize) -> bool {
+        self.shift_grid_rows(delta * GRID_ROWS as isize)
+    }
+
+    /// 收回单行（Esc 第一下），高亮留在原处。返回原来是不是展开着。
+    pub(super) fn collapse_grid(&mut self) -> bool {
+        self.grid.take().is_some()
+    }
+
+    /// 矩阵视口里竖着移 `delta` 行；没展开就从当前页展开。返回高亮是否真的动了。
+    fn shift_grid_rows(&mut self, delta: isize) -> bool {
+        let Some(Composed::Candidates { layout, .. }) = &self.composed else {
+            return false;
+        };
+        let page = self.highlight / self.config.page_size;
+        let mut grid = self.grid.take().unwrap_or_else(|| Grid::at(layout, page));
+        let moved = grid.move_rows(layout, self.highlight, delta);
+        self.grid = Some(grid);
+        self.land(moved)
+    }
+
+    /// 高亮落到 `index`（`None` 是没动）。返回是否动了。
+    fn land(&mut self, index: Option<usize>) -> bool {
+        let Some(index) = index else {
+            return false;
+        };
+        self.highlight = index;
+        self.navigated = true;
+        true
     }
 
     pub(super) fn candidate_count(&self) -> usize {
@@ -391,13 +479,17 @@ impl Router {
                 }],
                 preedit_mode: self.config.preedit,
                 cursor: *cursor,
+                window_preedit: None,
                 candidates: CandidateList { items: Vec::new() },
                 highlight: usize::MAX,
                 page: 0,
                 page_count: 1,
                 layout: self.config.layout,
+                columns: 0,
+                column_ems: Vec::new(),
                 appearance: self.config.appearance,
                 aux_code_show: self.config.aux_code_show,
+                translation_pos: self.config.translation_pos,
                 sentence: None,
                 notice: self.notice.clone(),
                 symbol_panel: false,
@@ -406,30 +498,85 @@ impl Router {
                 preedit,
                 cursor,
                 layout,
+                spelling,
                 ..
             }) => {
                 let page_size = self.config.page_size;
                 let highlight = self.highlight.min(layout.len().saturating_sub(1));
+                // 高亮候选的读音切法与首选不同（`ganga` 的 尴尬 / 刚啊）：拼音行按它重切
+                let candidate = layout.candidate(highlight);
+                let followed = (spelling.spelling_of(candidate) != spelling.spelled).then(|| {
+                    let mut followed = (**spelling).clone();
+                    followed.follow(candidate);
+                    followed
+                });
+                let query = followed.as_ref().unwrap_or(spelling);
+                let (preedit, cursor) = match &followed {
+                    Some(followed) => {
+                        let (preedit, cursor, _) = marked_parts(followed);
+                        (preedit, cursor)
+                    }
+                    None => (preedit.clone(), *cursor),
+                };
+                let window_preedit = window_parts(&self.engine, query, candidate, &preedit);
                 let page = highlight / page_size;
-                let items: Vec<Candidate> = layout
-                    .page(page)
-                    .into_iter()
-                    .filter_map(|cell| cell.candidate().cloned())
-                    .collect();
+                // 横排展开成矩阵时画视口里的几行（空位是占位候选），序号只标在高亮所在那一行；
+                // 单行时只画当前页。高亮下标跟着换成视口内的。
+                let viewport = self.grid.as_ref().map(|grid| grid.rows(layout));
+                // 视口首格在整份候选里的下标（单行时是页首）
+                let first = match &viewport {
+                    Some(rows) => rows.start * page_size,
+                    None => page * page_size,
+                };
+                let (items, columns) =
+                    match viewport {
+                        Some(rows) => {
+                            let mut items = Vec::new();
+                            for row in rows {
+                                let mut cells = layout.page(row);
+                                cells.resize(page_size, Cell::Empty);
+                                items.extend(cells.into_iter().map(|cell| {
+                                    cell.candidate().cloned().unwrap_or_else(empty_cell)
+                                }));
+                            }
+                            (items, page_size)
+                        }
+                        None => (
+                            layout
+                                .page(page)
+                                .into_iter()
+                                .filter_map(|cell| cell.candidate().cloned())
+                                .collect(),
+                            0,
+                        ),
+                    };
                 let mut candidates = CandidateList { items };
                 self.engine.annotate(&mut candidates);
                 self.annotate_sentence_translation(&mut candidates);
                 Frame {
-                    preedit: preedit.clone(),
+                    preedit,
                     preedit_mode: self.config.preedit,
-                    cursor: *cursor,
+                    cursor,
+                    window_preedit,
                     candidates,
-                    highlight: highlight - page * page_size,
+                    // 方向键在拼音行里时候选不画高亮，空格照样上屏原来高亮的那个
+                    highlight: if self.config.two_area_arrows() && self.focus == Focus::Pinyin {
+                        usize::MAX
+                    } else {
+                        highlight - first
+                    },
                     page,
                     page_count: layout.pages().max(1),
                     layout: self.config.layout,
+                    columns,
+                    column_ems: if columns > 0 {
+                        Grid::column_ems(layout)
+                    } else {
+                        Vec::new()
+                    },
                     appearance: self.config.appearance,
                     aux_code_show: self.config.aux_code_show,
+                    translation_pos: self.config.translation_pos,
                     sentence: self.sentence.clone(),
                     notice: self.notice.clone(),
                     symbol_panel: false,
@@ -437,6 +584,31 @@ impl Router {
             }
         }
     }
+}
+
+/// 矩阵视口里空位的占位候选：文本为空，渲染端按空格子画。
+fn empty_cell() -> Candidate {
+    Candidate {
+        text: String::new(),
+        kind: CandidateKind::Chinese,
+        syllables: Vec::new(),
+        reading: None,
+        translation: None,
+        aux_code: None,
+    }
+}
+
+/// 候选窗口顶部的拼音行：带调拼音开着、高亮候选读得出声调时换成它的读音，与行内拼音相同时不另给。
+fn window_parts(
+    engine: &Engine,
+    query: &Query,
+    candidate: Option<&Candidate>,
+    preedit: &[PreeditSegment],
+) -> Option<Box<(Vec<PreeditSegment>, usize)>> {
+    let toned = engine.toned_syllables(candidate?)?;
+    let (segments, cursor) = query.window_segments(Some(&toned));
+    let segments: Vec<PreeditSegment> = segments.iter().map(Into::into).collect();
+    (segments != preedit).then(|| Box::new((segments, cursor)))
 }
 
 /// 一次查询的拼音行分段与光标，以及输入框另显示原始按键时的那一串。

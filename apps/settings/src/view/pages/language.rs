@@ -8,7 +8,7 @@ use crate::message::Message;
 use crate::support::Feature;
 use crate::view::Page;
 use crate::view::parts::actions::with_notice;
-use crate::view::parts::controls::{choice, toggle, toggle_info};
+use crate::view::parts::controls::{choice, percent_slider, toggle, toggle_info};
 
 /// 全角 / 半角两档，配置里是布尔。
 const WIDTHS: [bool; 2] = [true, false];
@@ -23,7 +23,7 @@ pub fn language(ui: &mut Ui<Message>, page: &Page) -> Result<Vec<NodeId>, Render
         ui,
         page,
         "英文模式",
-        Some("关掉后固定中文，要英文就切到别的输入法"),
+        Some("关掉后只打中文"),
         ("general", "english_mode"),
         general.english_mode,
         false,
@@ -36,7 +36,11 @@ pub fn language(ui: &mut Ui<Message>, page: &Page) -> Result<Vec<NodeId>, Render
             ui,
             page,
             "默认英文模式",
-            Some("青简启动时用英文；按应用记住时，没记过的应用也从英文开始。改这两项会清掉已记住的状态"),
+            Some(if Feature::RememberModePerApp.here() {
+                "打开时先用英文"
+            } else {
+                "新打开的应用和窗口从英文开始"
+            }),
             ("general", "default_english"),
             general.default_english,
             !general.english_mode,
@@ -47,7 +51,7 @@ pub fn language(ui: &mut Ui<Message>, page: &Page) -> Result<Vec<NodeId>, Render
             ui,
             page,
             "按应用记住中英模式",
-            Some("切回应用时恢复它上次的中英状态，同一应用的窗口共用；重启青简后从默认模式开始"),
+            Some("切回应用时恢复它上次的中英状态"),
             ("general", "remember_mode_per_app"),
             general.remember_mode_per_app,
             !general.english_mode,
@@ -78,7 +82,7 @@ pub fn language(ui: &mut Ui<Message>, page: &Page) -> Result<Vec<NodeId>, Render
     )?;
     rows.push(
         SettingRow::new("英文模式也给候选")
-            .info("Tab 或方向键选词，不选时跟直接打字一样；下面勾上就只在浏览器、聊天、文档类应用里给")
+            .info("Tab 或方向键选英文词")
             .control(switch)
             .below(only)
             .build(ui, theme)?,
@@ -145,7 +149,7 @@ pub fn language(ui: &mut Ui<Message>, page: &Page) -> Result<Vec<NodeId>, Render
             ui,
             page,
             "中文与英文、数字之间自动加空格",
-            Some("「用Go写了30行」上屏成「用 Go 写了 30 行」；标点两侧不补，读不到应用里的文字时不补"),
+            Some("「用Go写」上屏成「用 Go 写」"),
             ("general", "auto_space"),
             general.auto_space,
             false,
@@ -162,8 +166,16 @@ pub fn language(ui: &mut Ui<Message>, page: &Page) -> Result<Vec<NodeId>, Render
             ("status_bar", "enabled"),
             config.status_bar.enabled,
         )?;
+        let size = percent_slider(
+            ui,
+            page,
+            ("状态条大小", ("status_bar", "size")),
+            config.status_bar.size(),
+            (60.0, 150.0),
+            !config.status_bar.enabled,
+        )?;
         out.push(section_title(ui, theme, "状态条")?);
-        out.push(group(ui, theme, &[status])?);
+        out.push(group(ui, theme, &[status, size])?);
     }
     Ok(out)
 }
@@ -191,13 +203,15 @@ fn switch_keys(ui: &mut Ui<Message>, page: &Page) -> Result<NodeId, RenderError>
             Message::SetList("shortcut", "switch_mode", values),
         )?);
     }
-    let system = page.settings.ctrl_space;
-    boxes.push(Checkbox::new(system, "Ctrl + Space（系统）").build(
-        ui,
-        &page.theme,
-        "switch-key-system",
-        Message::SystemCtrlSpace(!system),
-    )?);
+    if Feature::SystemCtrlSpace.here() {
+        let system = page.settings.ctrl_space;
+        boxes.push(Checkbox::new(system, "Ctrl + Space（系统）").build(
+            ui,
+            &page.theme,
+            "switch-key-system",
+            Message::SystemCtrlSpace(!system),
+        )?);
+    }
     let column = ui.scene().node(
         Style {
             flex_direction: FlexDirection::Column,
@@ -211,9 +225,7 @@ fn switch_keys(ui: &mut Ui<Message>, page: &Page) -> Result<NodeId, RenderError>
     with_notice(
         ui,
         page,
-        SettingRow::new("切换键")
-            .info("勾上的都能切，可以多选。Ctrl + Space（系统）是 Windows 的设置，也会影响微软拼音等简体中文输入法")
-            .control(column),
+        SettingRow::new("切换键").info("可以多选").control(column),
         "switch-keys",
     )
 }

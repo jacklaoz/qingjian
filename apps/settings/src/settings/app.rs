@@ -7,6 +7,9 @@ use bamboo_slip::taffy::NodeId;
 use bamboo_slip::{App, FamilyList, FamilyTable, Key, RenderError, TextPainter, Ui, Waker};
 
 use super::{SIZES, Settings};
+use qingjian_platform::LocalModel;
+
+use crate::jobs::model_download::Pack;
 use crate::library::{self, Library};
 use crate::message::{FieldId, Message, Popup, SizeKind};
 use crate::page_id::PageId;
@@ -29,9 +32,15 @@ impl App for Settings {
 
     fn update(&mut self, message: Message) -> bool {
         let armed = self.armed.take();
+        let remove_armed = self.remove_armed.take();
         if !matches!(
             message,
-            Message::Run(_) | Message::TestCloud | Message::CheckUpdate | Message::Import(_)
+            Message::Run(_)
+                | Message::TestCloud
+                | Message::CheckUpdate
+                | Message::DownloadModel(_)
+                | Message::Import(_)
+                | Message::VocabularyExport(_)
         ) {
             self.notice = None;
         }
@@ -47,8 +56,14 @@ impl App for Settings {
                 if page == PageId::Dictionaries {
                     self.library = Library::scan();
                 }
+                if page == PageId::Input {
+                    self.library.rescan_schemes();
+                }
                 if page == PageId::Stats {
                     self.stats = Some(Stats::load(&self.config.general));
+                }
+                if page == PageId::Vocabulary {
+                    self.open_vocabulary();
                 }
             }
             Message::SystemCtrlSpace(on) => self.set_ctrl_space(on),
@@ -64,14 +79,6 @@ impl App for Settings {
             },
             Message::ResetShortcuts => self.reset_shortcuts(),
             Message::OpenPhrase(index) => self.open_phrase(index),
-            Message::PhrasePosition(delta) => {
-                if let Some(editor) = self.phrase.as_mut() {
-                    editor.position = editor
-                        .position
-                        .saturating_add_signed(delta as isize)
-                        .clamp(1, 9);
-                }
-            }
             Message::SavePhrase => self.save_phrase(false),
             Message::DeletePhrase => {
                 let confirmed = self
@@ -94,11 +101,16 @@ impl App for Settings {
                     });
                 }
             }
-            Message::Import(kind) => match self.import.start(kind, self.waker.clone()) {
-                Ok(true) => self.notice = Some((kind.slot(), "正在导入…".to_owned())),
-                Ok(false) => {}
-                Err(error) => self.notice = Some((kind.slot(), error)),
-            },
+            Message::Import(kind) => {
+                match self
+                    .import
+                    .start(kind, self.code_target(), self.waker.clone())
+                {
+                    Ok(true) => self.notice = Some((kind.slot(), "正在导入…".to_owned())),
+                    Ok(false) => {}
+                    Err(error) => self.notice = Some((kind.slot(), error)),
+                }
+            }
             Message::Remove(kind, stem) => {
                 if let Err(error) = library::remove(kind, &stem) {
                     self.notice = Some((kind.slot(), error));
@@ -117,7 +129,22 @@ impl App for Settings {
                 }
                 self.write("shortcut", key, letter.to_string());
             }
+            Message::VocabularyView(_)
+            | Message::VocabularyLanguage(_)
+            | Message::VocabularyDay(_)
+            | Message::VocabularyFilter(_)
+            | Message::VocabularySort(_)
+            | Message::VocabularyPage(_)
+            | Message::VocabularyKnown(..)
+            | Message::VocabularyRemove(_)
+            | Message::VocabularyClear
+            | Message::VocabularyExport(_) => self.vocabulary_message(message),
             Message::Edit(id, edit) => {
+                if id == FieldId::VocabularySearch
+                    && let Some(vocabulary) = self.vocabulary.as_mut()
+                {
+                    vocabulary.page = 0;
+                }
                 if let Some(copied) = self
                     .fields
                     .get_mut(&id)
@@ -133,6 +160,25 @@ impl App for Settings {
                         "update",
                         started.err().unwrap_or_else(|| "正在检查…".to_owned()),
                     ));
+                }
+            }
+            Message::DownloadModel(model) => {
+                if let Err(error) = self.download.start(model, self.waker.clone()) {
+                    self.notice = Some(("download", error));
+                }
+            }
+            Message::CancelDownload => self.download.cancel(),
+            Message::RemoveModel(model) => {
+                if remove_armed != Some(model) {
+                    self.remove_armed = Some(model);
+                } else if let Some(pack) = Pack::of(model) {
+                    // 先换回通变再删，输入法不会去读删了一半的目录
+                    if self.config.model.name == model {
+                        self.write("model", "name", LocalModel::Tongbian.key());
+                    }
+                    if let Err(error) = pack.remove() {
+                        self.notice = Some(("download", error));
+                    }
                 }
             }
             Message::Commit(id) => self.commit(id),
@@ -154,6 +200,11 @@ impl App for Settings {
                 self.write(section, key, value);
             }
             Message::SetList(section, key, values) => self.write_list(section, key, &values),
+            Message::SetCodeRule(key, value) => {
+                if let Some(id) = self.config.general.code() {
+                    self.write(&format!("code.{id}"), key, value);
+                }
+            }
             Message::OpenMenu(popup) => {
                 if popup == Popup::Font && self.fonts.is_none() {
                     self.fonts = Some(fonts::families());
@@ -239,6 +290,12 @@ impl App for Settings {
             self.imported(report);
             changed = true;
         }
+        // 下载线程每报一次进度都叫醒一次，重画进度条
+        changed |= self.download.stage().is_some();
+        if let Some(model) = self.download.finished() {
+            // 下好了直接用上它：用户点下载就是想用
+            self.write("model", "name", model.key());
+        }
         if let Some(text) = self.update.finish(&self.config.update) {
             self.notice = Some(("update", text));
             changed = true;
@@ -248,6 +305,13 @@ impl App for Settings {
 
     fn set_system_dark(&mut self, dark: bool) {
         self.system_dark = dark;
+    }
+
+    /// 切回设置窗口时重扫输入方案：用户多半是刚在访达 / 资源管理器里往 `schemes/` 放了方案。
+    fn set_active(&mut self, active: bool) {
+        if active {
+            self.library.rescan_schemes();
+        }
     }
 
     fn spotlight(&self) -> Option<Key> {

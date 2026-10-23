@@ -5,6 +5,7 @@
 - `macos/app.svg`：macOS 应用图标源文件（输入法包与设置程序共用），图形同 Windows 的 `windows/app.svg`，按 macOS 图标网格摆
   （1024 画布居中 824 的圆角方块；不照网格画，macOS 26 会给图标垫一块灰底）。`macos/render-app-icon.sh` 栅格化成 `macos/app.png`
   随仓库提交，`apps/macos/scripts/bundle.sh` 打包时用 `sips` + `iconutil` 由它生成 `Qingjian.icns`。
+- `fcitx4.png`：由 `logo.png` 缩放到 48×48，供 Fcitx4 经典面板及托盘组件使用。
 - `menu.svg`：macOS 输入法图标源文件，黑色键帽镂空四片竹简（模板图，系统只取 alpha）。`menu.pdf` 是它导出的
   22×16pt 矢量版，打包时拷成 `qingjian-menu.pdf`，Info.plist 的图标键都指向它。为什么是这个形式和尺寸见
   `docs/design/architecture.md`「Info.plist 约定」。改了 svg 重新导出：

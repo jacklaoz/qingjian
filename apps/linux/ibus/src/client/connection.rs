@@ -115,7 +115,16 @@ impl Connection {
         event: KeyEvent,
         release: bool,
     ) -> Result<Reply, IbusError> {
-        self.event(session, LinuxEvent::Key { event, release })
+        // IBus 前端还不报光标前后文，也不接选区翻译的回传
+        self.event(
+            session,
+            LinuxEvent::Key {
+                event,
+                release,
+                surrounding: None,
+                selection_supported: false,
+            },
+        )
     }
 
     /// 报一次焦点进出。

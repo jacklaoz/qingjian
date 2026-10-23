@@ -41,6 +41,7 @@ pub(crate) const SCHEMES: [(&str, &str); Scheme::ALL.len()] = [
     (Scheme::ALL[8].label(), Scheme::ALL[8].key()),
     (Scheme::ALL[9].label(), Scheme::ALL[9].key()),
     (Scheme::ALL[10].label(), Scheme::ALL[10].key()),
+    (Scheme::ALL[11].label(), Scheme::ALL[11].key()),
 ];
 
 pub(crate) fn string_combo(
@@ -76,6 +77,14 @@ pub(crate) fn view(settings: &Settings, context: &mut ViewContext<Settings>) -> 
             ),
         ),
         field(
+            "译词显示词性",
+            "关掉后候选旁只显示译词，不显示 v. / n. / adj. 等标注（develop 而非 v. develop）。译文选「不显示译文」时此项无效。",
+            ToggleSwitch::new()
+                .is_on(g.translation_pos)
+                .is_enabled(!g.learning_language_off())
+                .on_toggled(context.callback(Message::TranslationPos)),
+        ),
+        field(
             "每页候选数",
             "",
             NumberBox::new()
@@ -86,8 +95,8 @@ pub(crate) fn view(settings: &Settings, context: &mut ViewContext<Settings>) -> 
         ),
         field(
             "拼音方案",
-            "全拼、五套双拼、大千注音，或关（只用下面的五笔）。\
-             双拼下 v、u、i 是音节键，表达式与问字模式改用 Shift+V、Shift+U 进（微软、搜狗方案的 ; 键是 ing）；\
+            "全拼、九套双拼、大千注音，或关（只用下面的五笔）。\
+             双拼下 v、u、i 是音节键，表达式与问字模式改用 Shift+V、Shift+U 进（微软、搜狗、紫光方案的 ; 键是 ing）；\
              注音下 v、u、i 也是按键，只能用 ? 开头进。",
             string_combo(
                 &SCHEMES,
@@ -109,7 +118,7 @@ pub(crate) fn view(settings: &Settings, context: &mut ViewContext<Settings>) -> 
              单用五笔请把拼音方案关掉；第 5 个字母起五笔查不到东西，自动只剩拼音。\
              译词、生词记录与学习照常。",
             ToggleSwitch::new()
-                .is_on(g.wubi())
+                .is_on(g.code().as_deref() == Some(qingjian_platform::code_schemes::WUBI86))
                 .on_toggled(context.callback(Message::Wubi)),
         ),
         field(

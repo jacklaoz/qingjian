@@ -7,6 +7,7 @@ mod context;
 mod frame;
 mod layout_style;
 mod leaf;
+mod matrix;
 mod row;
 
 use bamboo_slip::taffy::NodeId;
@@ -51,6 +52,7 @@ impl Builder<'_> {
         let spec = match layout {
             Layout::Vertical => &windows.vertical,
             Layout::Horizontal => &windows.horizontal,
+            Layout::Strip => &windows.strip,
         };
         self.root(spec, Context::new(frame))
     }

@@ -2,6 +2,7 @@
 
 use super::commit::CommitChain;
 use super::statistics::Typing;
+use super::vocabulary::ExampleCollector;
 use super::{Engine, LastCommit, Transition};
 use crate::{Composition, InputHistory, Language, Punctuation};
 use std::time::Instant;
@@ -51,6 +52,9 @@ pub struct EngineSession {
     /// 本会话最近的上屏前文。
     history: InputHistory,
 
+    /// 本会话里等句子写完的例句。
+    examples: ExampleCollector,
+
     /// 本会话连续上屏的学习链。
     chain: CommitChain,
 }
@@ -84,6 +88,9 @@ impl Engine {
         );
         std::mem::swap(&mut self.displayed, &mut session.displayed);
         std::mem::swap(&mut self.history, &mut session.history);
+        // 过期时长是配置，跟着 Engine 走，不跟着上下文
+        self.history.fresh_like(&session.history);
+        std::mem::swap(&mut self.examples, &mut session.examples);
         std::mem::swap(&mut self.chain, &mut session.chain);
         self.forget_span_cache();
         *self.correction_cache.borrow_mut() = None;
@@ -107,6 +114,7 @@ impl EngineSession {
         self.committed_since_break = false;
         self.displayed.clear();
         self.history.clear();
+        self.examples.clear();
         self.chain = CommitChain::default();
     }
 }
@@ -129,6 +137,7 @@ impl Engine {
         self.committed_since_break = false;
         self.displayed.clear();
         self.history.clear();
+        self.examples.clear();
         self.chain = CommitChain::default();
         self.rescoring_before = None;
         *self.neural_cache.borrow_mut() = super::rescoring::NeuralCache::default();

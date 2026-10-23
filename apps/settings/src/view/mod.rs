@@ -107,7 +107,7 @@ pub fn index(settings: &Settings) -> Vec<Entry> {
         content_width: 600.0,
     };
     let mut entries = Vec::new();
-    for id in PageId::ALL {
+    for id in PageId::ALL.into_iter().filter(|id| id.shown()) {
         entries.push(Entry {
             page: id,
             key: None,
@@ -145,7 +145,9 @@ fn page_children(
         PageId::Dictionaries => pages::dictionaries::dictionaries(ui, page)?,
         PageId::Cloud => pages::cloud::cloud(ui, page)?,
         PageId::Stats => pages::stats::stats(ui, page)?,
+        PageId::Vocabulary => pages::vocabulary::vocabulary(ui, page)?,
         PageId::Advanced => pages::advanced::advanced(ui, page)?,
+        PageId::Experimental => pages::experimental::experimental(ui, page)?,
         PageId::About => pages::about::about(ui, page)?,
     })
 }
