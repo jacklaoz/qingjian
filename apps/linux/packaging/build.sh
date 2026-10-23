@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# 打 Linux 发行包：deb（Debian 13 / Ubuntu 25.04+）、rpm（Fedora 42+）、flatpak（只有 IBus 前端）。
+# 打 Linux 发行包：deb（Debian 13 / Ubuntu 25.04+）、rpm（Fedora 42+）。
 #
-#   apps/linux/packaging/build.sh               三种都打
+#   apps/linux/packaging/build.sh               两种都打
 #   apps/linux/packaging/build.sh deb rpm       只打给出的几种
 #   QINGJIAN_SAMPLE=1 apps/linux/packaging/build.sh   只带样例词库（没有产品数据时）
 #
-# 产物在 target/linux-pkg/out/。全部在容器里编，只要 docker（免 sudo）与 flatpak：
-# - Rust 的 Server 与 IBus 前端在 Ubuntu 22.04 里编一次（glibc 2.35），三种包共用，老一点的发行版也跑得起来；
+# 产物在 target/linux-pkg/out/。全部在容器里编，只要 docker（免 sudo）：
+# - Rust 的 Server 与 IBus 前端在 Ubuntu 22.04 里编一次（glibc 2.35），两种包共用，老一点的发行版也跑得起来；
 # - fcitx5 插件要对着目标发行版自己的 fcitx5 编（CMakeLists 要 5.1.8+），deb 在 Debian 13、rpm 在 Fedora 42 里编。
 # 每种包里 Server 与数据一个包、fcitx5 插件一个包（IBus 前端没有额外依赖，跟 Server 同包）。
 # 设计与限制见 docs/notes/linux-packaging.md；打完用 smoke/run.sh 在几个发行版的干净容器里装一遍自检。
@@ -16,9 +16,9 @@ here="$root/apps/linux/packaging"
 work="$root/target/linux-pkg"
 out="$work/out"
 formats=("$@")
-((${#formats[@]})) || formats=(deb rpm flatpak)
+((${#formats[@]})) || formats=(deb rpm)
 for format in "${formats[@]}"; do
-  case "$format" in deb|rpm|flatpak) ;; *) echo "只认 deb / rpm / flatpak：$format" >&2; exit 2 ;; esac
+  case "$format" in deb|rpm) ;; *) echo "只认 deb / rpm：$format" >&2; exit 2 ;; esac
 done
 command -v docker >/dev/null || { echo '要 docker' >&2; exit 1; }
 
@@ -115,12 +115,6 @@ RUN dnf install -y --setopt=install_weak_deps=False rpm-build cmake gcc-c++ make
   in_container "$tag" RPM_VERSION="$upstream" RPM_RELEASE="$rpm_release" bash /src/apps/linux/packaging/rpm/assemble.sh
   rm -f "$out"/*.rpm
   cp "$stage"/rpms/x86_64/*.rpm "$out/"
-}
-
-build_flatpak() {
-  echo '==> flatpak'
-  rm -f "$out"/*.flatpak
-  bash "$here/flatpak/assemble.sh" "$bin" "$resources" "$out" "$deb_version"
 }
 
 for format in "${formats[@]}"; do "build_$format"; done

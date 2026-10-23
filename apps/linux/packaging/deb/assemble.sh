@@ -72,7 +72,7 @@ cat > "$core/DEBIAN/postinst" <<'SCRIPT'
 set -e
 if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
   systemctl --global enable qingjian-server.service >/dev/null 2>&1 || true
-  # 用户目录里的同名单元（源码安装的 install.sh 或 flatpak 版登记的）会盖过这个包的 Server：
+  # 用户目录里的同名单元（源码安装的 install.sh 登记的）会盖过这个包的 Server：
   # 前端用这个包的、Server 用那边的，版本一错开就打不出字（本机踩过：Server 断开会话，按键全部放行）
   getent passwd | while IFS=: read -r name _ uid _ _ home _; do
     [ "$uid" -ge 1000 ] 2>/dev/null || continue
@@ -81,7 +81,6 @@ if [ "$1" = configure ] && command -v systemctl >/dev/null 2>&1; then
       echo "注意：用户 $name 有自己的青简 Server 服务，会盖过这个包装的：" >&2
       echo "  $home/.config/systemd/user/qingjian-server.service" >&2
       echo "  以该用户卸掉那一份——源码安装的：apps/linux/scripts/uninstall.sh" >&2
-      echo "  flatpak 版：flatpak run app.qingjian.Qingjian --uninstall | bash" >&2
     fi
   done
   loginctl list-users --no-legend 2>/dev/null | while read -r _ user _; do
